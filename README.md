@@ -1,68 +1,38 @@
-# Hybrid RAG Using BM25: Better Option for AI Governance
+# Hybrid BM25 + Vector RAG (Community Edition)
 
-Welcome to the **Hybrid RAG Guide**: a dual-memory (LT + HOT) Vector + BM25 approach to Retrieval-Augmented Generation that delivers answers that are **transparent, deterministic, and governance-ready** by design. The repo houses two fully working paths:
+This repository contains a laptop-friendly hybrid Retrieval-Augmented Generation (RAG) stack built on **OpenSearch BM25**, optional **vector search**, and a local **llama.cpp** model. The Python code under `community_version/` is the authoritative implementation; documentation now mirrors that code.
 
-* **Community / Open-Source Version**: a self-contained demo you can run on a laptop or in a pure open-source deployment.
-* **Enterprise Version**: a production-grade variant that layers in ingest pipelines, NetApp FlexCache, SnapMirror, and other operational muscle.
+The system favors explainability and auditability:
 
-![Document RAG with Reinforcement Learning](./images/reinforcement_learning.png)
+* **Lexical-first retrieval.** Queries start with entity-aware BM25 searches against paragraph-level chunks in both long-term and HOT stores.
+* **Optional dense signals.** Question embeddings can add vector matches, but lexical evidence always remains in the result set.
+* **Transparent scoring.** An external BM25 re-ranker (via [`bm25s`](https://github.com/xhluca/bm25s)) is enabled by default so the ranked list is reproducible and inspectable.
 
-By storing knowledge as **documents with enriched metadata** (named entities and provenance tags) instead of opaque vectors alone, the agent gains traceability, reduces hallucinations, and meets demanding audit requirements.
+## Repository layout
 
-### Project Purpose
+* `community_version/` – runnable hybrid RAG demo (ingestion, query, HOT reinforcement utilities).
+* `Document_Search_for_Better_AI_Governance.md` – background on why lexical-first retrieval improves governance.
+* `OSS_Community_Version.md` / `Enterprise_Version.md` – narrative guides for broader deployments.
 
-This project was developed to address limitations of traditional vector-centric RAG and to make retrieval **explainable** and **auditable**.
+If you want to run the stack, start with `community_version/README.md` for setup, configuration, and commands.
 
-* **Performance & latency**: The LT/HOT split exists primarily for **governance boundaries**, **retention variations control**, and **policy asymmetry**; retrieval remains lexical-first and observable.
-* **Transparency and Explainability**: Vector embeddings are opaque. Document-based RAG stores explicit entity metadata (`explicit_terms`, `explicit_terms_text`) and uses fielded, auditable BM25 queries so you can show *why* a document matched.
-
-Key objectives include:
-
-* Provide a reference architecture for **Document-based RAG** with explicit **HOT (unstable)** and **Long-Term (LT)** tiers.
-* Make promotion from **HOT → LT** a **controlled event** that happens only when (1) there is **enough positive reinforcement** of the data **or** (2) a **trusted human-in-the-loop** has verified it.
-* Show upgrade paths-from a minimal Python demo to an enterprise pipeline with NetApp enterprise storage.
-
-## Benefits Over Vector-Based RAG
-
-Adopting Document-based RAG addresses several key limitations of traditional RAG agents:
-
-* **Multi-Step Reasoning**: OpenSearch indexing with entity enrichment supports complex, entity-aware queries across related documents.
-* **Bias Mitigation**: Explicit metadata and annotations expose skew and make it easier to correct.
-* **Improved Compliance and Governance**: Provenance fields and auditable clauses enable traceable, regulator-friendly retrieval.
-* **Risk Management**: Deterministic lexical logic and highlights reduce hallucinations and make review straightforward.
-
-### Community vs Enterprise: What Changes?
-
-| Capability                 | Community Edition                             | Enterprise Edition                                                          |
-| -------------------------- | --------------------------------------------- | --------------------------------------------------------------------------- |
-| **HOT backing store**      | `tmpfs` / RAM-disk on the dev box             | **NetApp FlexCache** for locality; durability via **SnapMirror** replicas   |
-| **Governance hooks**       | Basic provenance tags                         | Promotion events logged, schema-versioned, and instantly traceable          |
-| **Latency posture**        | Latency is secondary to governance boundaries | Latency tuned per SLA, but the split is for **governance/policy asymmetry** |
-
-> **TL;DR:** start with the community guide for laptops and commodity hardware; switch to the enterprise path when you need multi-site, 24×7, and **governance** at scale. The split exists for **control and auditability**, not because latency forces it.
-
-## Where To Dive Deeper
-
-| Document                                     | What it covers                                                                                        |
-| -------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| **Document Search for Better AI Governance** | Vision & governance rationale for Document RAG [link](./Document_Search_for_Better_AI_Governance.md)  |
-| **Community Version Guide**                  | Step-by-step setup for the open-source flavour [link](./OSS_Community_Version.md)                     |
-| **Community README**                         | Hands-on commands & scripts [link](./community_version/README.md)                                     |
-| **Enterprise Version Guide**                 | Deep dive on ingest pipelines, FlexCache, SnapMirror [link](./Enterprise_Version.md)                  |
-| **Enterprise README**                        | Production deployment notes [link](./enterprise_version/README.md)                                    |
-
-## Quick Start
+## Quick start
 
 ```bash
-# 1. Clone the repo
-$ git clone https://github.com/davidvonthenen/document-rag-guide.git
+cd community_version
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+python -m spacy download en_core_web_sm
 
-# 2. Pick your path
-$ cd document-rag-guide/community_version   # laptop demo
-# or
-$ cd document-rag-guide/enterprise_version  # prod-ready setup
+# Run the local spaCy NER API required by the pipeline
+python ner_service.py
 
-# 3. Follow the README in that folder
+# Ingest the BBC dataset into OpenSearch (long-term BM25 + vector chunks)
+python ingest.py --data-dir bbc
+
+# Ask questions using hybrid BM25 + vector retrieval
+python query.py --question "What did Google purchase Windsurf for?" --observability
 ```
 
-Questions? Open an issue or start a discussion and contributions are welcome!
+See the community README for environment variable overrides (OpenSearch hosts/indices, llama.cpp model path, ranking knobs) and HOT memory workflows.
+
