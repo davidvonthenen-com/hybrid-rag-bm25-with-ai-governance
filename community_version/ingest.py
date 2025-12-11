@@ -62,6 +62,18 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         default=32,
         help="Vector batch size (paragraphs)",
     )
+    parser.add_argument(
+        "--vector-chunk-size",
+        type=int,
+        default=1000,
+        help="Maximum characters per vector chunk",
+    )
+    parser.add_argument(
+        "--vector-chunk-overlap",
+        type=int,
+        default=200,
+        help="Character overlap between consecutive vector chunks",
+    )
     return parser.parse_args(argv)
 
 
@@ -237,6 +249,46 @@ def _build_chunk_documents(
     return chunk_docs
 
 
+def build_vector_chunks(
+    paragraphs: Iterable[str],
+    *,
+    chunk_size: int,
+    chunk_overlap: int,
+) -> List[str]:
+    """Create sliding-window text chunks for vector embeddings.
+
+    Args:
+        paragraphs: Paragraphs from the source document. Blank entries are ignored.
+        chunk_size: Maximum size (in characters) of each chunk.
+        chunk_overlap: Number of characters to overlap between consecutive chunks.
+
+    Returns:
+        A list of chunk strings sized for dense embedding models.
+    """
+
+    cleaned_paragraphs = [p.strip() for p in paragraphs if p.strip()]
+    if not cleaned_paragraphs:
+        return []
+
+    combined_text = "\n\n".join(cleaned_paragraphs)
+    chunks: List[str] = []
+
+    start = 0
+    text_length = len(combined_text)
+    step = max(chunk_size - chunk_overlap, 1)
+
+    while start < text_length:
+        end = min(start + chunk_size, text_length)
+        chunk = combined_text[start:end].strip()
+        if chunk:
+            chunks.append(chunk)
+        if end == text_length:
+            break
+        start += step
+
+    return chunks
+
+
 # ---------------------------------------------------------------------------
 # Ingestion logic
 # ---------------------------------------------------------------------------
@@ -248,6 +300,8 @@ def doc_sha1(s: str) -> str:
 def ingest_hybrid(
     data_dir: Path,
     batch_size: int,
+    vector_chunk_size: int,
+    vector_chunk_overlap: int,
 ) -> None:
     # 1) Connect BM25 cluster (LONG) and create indices
     bm25_client, _ = create_long_client()
@@ -311,15 +365,21 @@ def ingest_hybrid(
                 )
                 stats.bm25_chunks += 1
 
+            vector_text_chunks = build_vector_chunks(
+                paragraphs,
+                chunk_size=vector_chunk_size,
+                chunk_overlap=vector_chunk_overlap,
+            )
+
             vec_chunks: List[Dict[str, object]] = [
                 {
                     "category": category,
                     "rel_path": rel_path,
-                    "chunk_index": chunk_doc["chunk_index"],
-                    "chunk_count": chunk_doc["chunk_count"],
-                    "text": chunk_doc["content"],
+                    "chunk_index": idx,
+                    "chunk_count": len(vector_text_chunks),
+                    "text": chunk_text,
                 }
-                for chunk_doc in chunk_docs
+                for idx, chunk_text in enumerate(vector_text_chunks)
             ]
 
             for i in range(0, len(vec_chunks), batch_size):
@@ -377,6 +437,8 @@ def main(argv: Sequence[str] | None = None) -> None:
     ingest_hybrid(
         data_dir=data_dir,
         batch_size=args.batch_size,
+        vector_chunk_size=args.vector_chunk_size,
+        vector_chunk_overlap=args.vector_chunk_overlap,
     )
 
 
