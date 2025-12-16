@@ -22,12 +22,16 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 import time
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from common.bm25 import bm25_retrieve_chunks, bm25_retrieve_doc_anchors
 from common.embeddings import vector_retrieve_chunks
+from common.logging import get_logger
+from common.models import RetrievalHit
+from common.named_entity import extract_entities
+from common.opensearch_client import create_long_client, create_vector_client
+from citations import extract_citations
 from common.llm import (
     build_grounding_prompt,
     build_refine_prompt,
@@ -36,14 +40,7 @@ from common.llm import (
     call_llm_chat,
     load_llm,
 )
-from common.logging import get_logger
-from common.models import RetrievalHit
-from common.named_entity import extract_entities
-from common.opensearch_client import create_long_client, create_vector_client
-
 LOGGER = get_logger(__name__)
-
-_CITATION_RE = re.compile(r"\[(B\d+|V\d+)\]")
 
 
 # --------------------------------------------------------------------------------------
@@ -81,11 +78,6 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     p.add_argument("--vec-index", type=str, default=None)
 
     return p.parse_args(argv)
-
-
-def _extract_citations(answer: str) -> List[str]:
-    return sorted(set(m.group(1) for m in _CITATION_RE.finditer(answer)))
-
 
 # --------------------------------------------------------------------------------------
 # Orchestration
@@ -215,7 +207,7 @@ def run_one(
         else:
             answer = grounded_draft
 
-    citations = _extract_citations(answer)
+    citations = extract_citations(answer)
 
     audit: Dict[str, Any] = {
         "question": question,
