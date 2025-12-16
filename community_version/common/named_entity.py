@@ -66,4 +66,13 @@ def normalize_entities(ner_result: Dict[str, Any]) -> List[str]:
     return out
 
 
-__all__ = ["post_ner", "normalize_entities"]
+def extract_entities(question: str) -> List[str]:
+    try:
+        ner_payload = post_ner(question)
+        return normalize_entities(ner_payload)
+    except Exception as exc:
+        LOGGER.warning("NER failed (%s). Proceeding without entities.", exc)
+        return []
+
+
+__all__ = ["post_ner", "normalize_entities", "extract_entities"]

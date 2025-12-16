@@ -14,6 +14,7 @@ from .bm25 import rerank_hits_with_bm25
 from .config import Settings, load_settings
 from .embeddings import embed_question, normalize_vector_hits
 from .logging import get_logger
+from .models import RetrievalHit
 from .named_entity import normalize_entities, post_ner
 from .opensearch_client import (
     build_query_external_ranking,
@@ -337,4 +338,244 @@ def ask(
     return answer, hybrid_hits
 
 
-__all__ = ["load_llm", "generate_answer", "ask"]
+def _messages_to_prompt(messages: List[Dict[str, str]]) -> str:
+    """Fallback formatting for non-chat completion interfaces."""
+    parts: List[str] = []
+    for m in messages:
+        role = (m.get("role") or "user").upper()
+        content = m.get("content") or ""
+        parts.append(f"{role}:\n{content}".strip())
+    return "\n\n".join(parts).strip()
+
+
+def _extract_llm_text(resp: Any) -> str:
+    """Normalize many possible completion response shapes into a plain string."""
+    if resp is None:
+        return ""
+
+    if isinstance(resp, str):
+        return resp.strip()
+
+    # llama_cpp and many other clients return dicts
+    if isinstance(resp, dict):
+        choices = resp.get("choices")
+        if isinstance(choices, list) and choices:
+            c0 = choices[0]
+            if isinstance(c0, dict):
+                # chat completion style
+                msg = c0.get("message")
+                if isinstance(msg, dict) and "content" in msg:
+                    return str(msg.get("content") or "").strip()
+                # text completion style
+                if "text" in c0:
+                    return str(c0.get("text") or "").strip()
+                # streaming delta style
+                delta = c0.get("delta")
+                if isinstance(delta, dict) and "content" in delta:
+                    return str(delta.get("content") or "").strip()
+        # some wrappers return {"content": "..."}
+        if "content" in resp and isinstance(resp["content"], str):
+            return resp["content"].strip()
+        return str(resp).strip()
+
+    # OpenAI v1 python client response objects have .choices
+    choices = getattr(resp, "choices", None)
+    if choices and isinstance(choices, list):
+        c0 = choices[0]
+        # chat
+        msg = getattr(c0, "message", None)
+        if msg is not None:
+            content = getattr(msg, "content", None)
+            if isinstance(content, str):
+                return content.strip()
+        # completion
+        text = getattr(c0, "text", None)
+        if isinstance(text, str):
+            return text.strip()
+
+    # Fallback: stringify
+    return str(resp).strip()
+
+
+def call_llm_chat(
+    llm: Any,
+    *,
+    messages: List[Dict[str, str]],
+    model: Optional[str],
+    temperature: float,
+    top_p: float,
+    max_tokens: int,
+) -> str:
+    """Chat-style completion, with explicit support for llama_cpp.Llama.
+
+    This fixes the failure mode where calling a llama_cpp model directly
+    (llm(prompt)) returns a raw dict completion object rather than the text.
+    """
+    # 1) llama_cpp: use create_chat_completion (best behavior for role-based prompts)
+    create_chat = getattr(llm, "create_chat_completion", None)
+    if callable(create_chat):
+        resp = create_chat(
+            messages=messages,
+            temperature=temperature,
+            top_p=top_p,
+            max_tokens=max_tokens,
+        )
+        return _extract_llm_text(resp)
+
+    # 2) OpenAI-like client: llm.chat.completions.create(...)
+    chat = getattr(llm, "chat", None)
+    if chat is not None:
+        completions = getattr(chat, "completions", None)
+        create = getattr(completions, "create", None) if completions is not None else None
+        if callable(create):
+            kwargs: Dict[str, Any] = {
+                "messages": messages,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+            }
+            if model:
+                kwargs["model"] = model
+            resp = create(**kwargs)
+            return _extract_llm_text(resp)
+
+    # 3) Some wrappers provide invoke(messages) -> str/dict
+    invoke = getattr(llm, "invoke", None)
+    if callable(invoke):
+        resp = invoke(messages)
+        return _extract_llm_text(resp)
+
+    # 4) Text completion fallback: convert messages to prompt and try create_completion / __call__
+    prompt = _messages_to_prompt(messages)
+
+    create_completion = getattr(llm, "create_completion", None)
+    if callable(create_completion):
+        resp = create_completion(prompt=prompt, temperature=temperature, top_p=top_p, max_tokens=max_tokens)
+        return _extract_llm_text(resp)
+
+    if callable(llm):
+        # llama_cpp.__call__ uses a low default max_tokens; pass explicit args if supported
+        try:
+            resp = llm(prompt, temperature=temperature, top_p=top_p, max_tokens=max_tokens)
+        except TypeError:
+            resp = llm(prompt)
+        return _extract_llm_text(resp)
+
+    raise TypeError("Unsupported LLM client type returned by load_llm().")
+
+
+def _format_hits(hits: List[RetrievalHit], *, title: str) -> str:
+    blocks = [f"## {title}"]
+    for h in hits:
+        meta = [f"handle={h.handle}", f"score={h.score:.4f}", f"path={h.path}"]
+        if h.chunk_index is not None and h.chunk_count is not None:
+            meta.append(f"chunk={h.chunk_index}/{h.chunk_count}")
+        if h.category:
+            meta.append(f"category={h.category}")
+        blocks.append(f"[{h.handle}] ({', '.join(meta)})\n{h.text}".strip())
+    return "\n\n".join(blocks).strip()
+
+
+def build_grounding_prompt(question: str, bm25_hits: List[RetrievalHit]) -> List[Dict[str, str]]:
+    print("***** Building grounding prompt...")
+
+    context = _format_hits(bm25_hits, title="BM25 Grounding Evidence (authoritative facts)")
+    system = (
+        "Answer using ONLY the BM25 Grounding Evidence.\n"
+        "Rules:\n"
+        "- Every factual claim must cite at least one [B#].\n"
+        "- If evidence does not support the answer, respond: I don't know based on the provided evidence.\n"
+        "- Do not quote the evidence headers/metadata. Use them only for citations.\n"
+        "- If there is conflicting evidence, disclose the conflict and data.\n"
+    )
+    user = f"QUESTION:\n{question}\n\nGROUNDING_EVIDENCE:\n{context}\n"
+
+    prompt_details = [{"role": "system", "content": system}, {"role": "user", "content": user}]
+
+    print("=====================================================")
+    print(_messages_to_prompt(prompt_details))
+    print("=====================================================")
+
+    return prompt_details
+
+
+def build_vector_only_prompt(question: str, vec_hits: List[RetrievalHit]) -> List[Dict[str, str]]:
+    print("***** Building vector-only prompt...")
+    context = _format_hits(vec_hits, title="Vector Evidence (semantic fallback)")
+    system = (
+        "Answer using ONLY the Vector Evidence.\n"
+        "Rules:\n"
+        "- Every factual claim must cite at least one [V#].\n"
+        "- If evidence does not support the answer, respond: I don't know based on the provided evidence.\n"
+        "- Do not quote the evidence headers/metadata.\n"
+    )
+    user = f"QUESTION:\n{question}\n\nEVIDENCE:\n{context}\n"
+    prompt_details = [{"role": "system", "content": system}, {"role": "user", "content": user}]
+
+    print("=====================================================")
+    print(_messages_to_prompt(prompt_details))
+    print("=====================================================")
+
+    return prompt_details
+
+
+def build_refine_prompt(question: str, grounded_draft: str, vec_hits: List[RetrievalHit]) -> List[Dict[str, str]]:
+    print("***** Building refine prompt...")
+
+    vec_context = _format_hits(vec_hits, title="Vector Semantic Context (phrasing/terminology support)")
+    system = (
+        "Rewrite the grounded draft for clarity.\n"
+        "Rules:\n"
+        "- Do NOT add new factual claims beyond what appears in the draft.\n"
+        "- Preserve [B#] citations exactly.\n"
+        "- You may add brief non-factual clarifications supported by vector context and cite [V#].\n"
+        "- Output ONLY the rewritten answer.\n"
+        "- If there is conflicting evidence, disclose the conflict and data.\n"
+    )
+    user = (
+        f"QUESTION:\n{question}\n\n"
+        f"GROUNDED_DRAFT:\n{grounded_draft}\n\n"
+        f"{vec_context}\n"
+    )
+    prompt_details = [{"role": "system", "content": system}, {"role": "user", "content": user}]
+
+    print("=====================================================")
+    print(_messages_to_prompt(prompt_details))
+    print("=====================================================")
+
+    return prompt_details
+
+
+def build_single_pass_prompt(question: str, bm25_hits: List[RetrievalHit], vec_hits: List[RetrievalHit]) -> List[Dict[str, str]]:
+    print("***** Building single-pass prompt...")
+
+    bm25_context = _format_hits(bm25_hits, title="BM25 Grounding Evidence (authoritative facts)")
+    vec_context = _format_hits(vec_hits, title="Vector Semantic Context (phrasing/terminology support)")
+    system = (
+        "Answer using the provided contexts.\n"
+        "Separation of concerns:\n"
+        "- Use BM25 Grounding Evidence for factual claims.\n"
+        "- Use Vector Semantic Context only for wording/terminology, not new facts.\n"
+        "Rules:\n"
+        "- Every factual claim must cite [B#].\n"
+        "- If BM25 evidence does not support the answer, respond: I don't know based on the provided evidence.\n"
+    )
+    user = f"QUESTION:\n{question}\n\n{bm25_context}\n\n{vec_context}\n"
+    prompt_details = [{"role": "system", "content": system}, {"role": "user", "content": user}]
+
+    print("=====================================================")
+    print(_messages_to_prompt(prompt_details))
+    print("=====================================================")
+
+    return prompt_details
+
+
+__all__ = [
+    "load_llm",
+    "generate_answer",
+    "ask",
+    "call_llm_chat",
+    "build_grounding_prompt",
+    "build_vector_only_prompt",
+    "build_refine_prompt",
+    "build_single_pass_prompt",
+]

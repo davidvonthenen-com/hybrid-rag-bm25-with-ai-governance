@@ -3,12 +3,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Union
+import json
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 from sentence_transformers import SentenceTransformer
 
 from .config import Settings, load_settings
+from .models import RetrievalHit
 
 
 @lru_cache(maxsize=2)
@@ -134,10 +136,81 @@ def to_list(vec: Union[np.ndarray, Sequence[float], List[float]]) -> List[float]
     return [float(x) for x in vec]
 
 
+def _build_vector_query(
+    query_vector: List[float],
+    *,
+    k: int,
+    candidate_k: int,
+    anchor_paths: Optional[List[str]] = None,
+    vector_field: str = "embedding",
+) -> Dict[str, Any]:
+    knn_clause = {"knn": {vector_field: {"vector": query_vector, "k": candidate_k}}}
+    return {
+        "size": k,
+        "_source": ["path", "category", "chunk_index", "chunk_count", "text"],
+        "query": {
+            "bool": {
+                "must": [knn_clause],
+                "filter": [{"terms": {"path": anchor_paths}}] if anchor_paths else [],
+            }
+        },
+    }
+
+
+def vector_retrieve_chunks(
+    vec_client: Any,
+    index: str,
+    *,
+    question: str,
+    anchor_paths: Optional[List[str]],
+    k: int,
+    candidate_k: int,
+    observability: bool,
+    vector_field: str = "embedding",
+) -> Tuple[List[RetrievalHit], Dict[str, Any], List[Dict[str, Any]]]:
+    embedder = EmbeddingModel()
+    qvec = to_list(embedder.encode([question])[0])
+
+    q = _build_vector_query(qvec, k=k, candidate_k=candidate_k, anchor_paths=anchor_paths, vector_field=vector_field)
+
+    if observability:
+        dbg = json.loads(json.dumps(q))
+        try:
+            dbg["query"]["bool"]["must"][0]["knn"][vector_field]["vector"] = "<omitted>"
+        except Exception:
+            pass
+        print("\n[VECTOR_QUERY]\n" + json.dumps(dbg, ensure_ascii=False, indent=2, sort_keys=True, default=str))
+
+    res = vec_client.search(index=index, body=q)
+    raw_hits = res.get("hits", {}).get("hits", []) or []
+
+    hits: List[RetrievalHit] = []
+    for i, h in enumerate(raw_hits, start=1):
+        src = h.get("_source", {}) or {}
+        hits.append(
+            RetrievalHit(
+                channel="vector",
+                handle=f"V{i}",
+                index=index,
+                os_id=h.get("_id", ""),
+                score=float(h.get("_score") or 0.0),
+                path=src.get("path") or "",
+                category=src.get("category") or "",
+                chunk_index=src.get("chunk_index"),
+                chunk_count=src.get("chunk_count"),
+                text=(src.get("text") or "").strip(),
+            )
+        )
+
+    return hits, q, raw_hits
+
+
 __all__ = [
     "load_embedder",
     "EmbeddingModel",
     "embed_question",
     "normalize_vector_hits",
+    "_build_vector_query",
+    "vector_retrieve_chunks",
     "to_list",
 ]
