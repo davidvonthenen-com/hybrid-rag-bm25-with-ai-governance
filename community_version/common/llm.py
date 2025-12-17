@@ -112,38 +112,35 @@ def _merge_hybrid_ranked(
 
     The function enforces a minimum share of results from each modality (when
     available) so the final list truly represents a hybrid of lexical and
-    semantic signals.
+    semantic signals. A small helper handles duplicate suppression to keep the
+    main control flow easy to read.
     """
 
     if top_k <= 0:
         return []
 
     vector_fraction = max(0.0, min(1.0, float(vector_fraction)))
-    vec_budget = int(round(top_k * vector_fraction))
-    vec_budget = max(0, min(top_k, vec_budget))
+    vec_budget = max(0, min(top_k, int(round(top_k * vector_fraction))))
     bm_budget = top_k - vec_budget
-
-    initial = bm25_hits[:bm_budget] + vector_hits[:vec_budget]
 
     seen: set[str] = set()
     merged: List[Dict[str, Any]] = []
-    for hit in initial:
+
+    def add_unique_hit(hit: Dict[str, Any]) -> None:
         key = _hit_key(hit)
         if key in seen:
-            continue
+            return
         seen.add(key)
         merged.append(hit)
 
+    for hit in bm25_hits[:bm_budget] + vector_hits[:vec_budget]:
+        add_unique_hit(hit)
+
     if len(merged) < top_k:
-        leftovers = bm25_hits[bm_budget:] + vector_hits[vec_budget:]
-        for hit in leftovers:
+        for hit in bm25_hits[bm_budget:] + vector_hits[vec_budget:]:
             if len(merged) >= top_k:
                 break
-            key = _hit_key(hit)
-            if key in seen:
-                continue
-            seen.add(key)
-            merged.append(hit)
+            add_unique_hit(hit)
 
     return merged
 
