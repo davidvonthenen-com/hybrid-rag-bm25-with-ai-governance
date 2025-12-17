@@ -102,7 +102,8 @@ def run_one(
     entities = extract_entities(question)
 
     # Indices
-    bm25_full_index = args.bm25_full_index or getattr(bm25_client.settings, "opensearch_full_index", None) or getattr(bm25_client.settings, "opensearch_hot_index", None)
+    bm25_full_index = args.bm25_full_index or getattr(bm25_client.settings, "opensearch_full_index", None)
+    # TODO: need to deal with HOT INDEX or getattr(bm25_client.settings, "opensearch_hot_index", None)
     bm25_chunk_index = args.bm25_chunk_index or getattr(bm25_client.settings, "opensearch_long_index", None)
     vec_index = args.vec_index or getattr(vec_client.settings, "opensearch_vector_index", None)
     if not bm25_full_index or not bm25_chunk_index or not vec_index:
@@ -125,7 +126,7 @@ def run_one(
         observability=args.observability,
     )
 
-    # 2) bm25 chunks
+    # 2A) bm25 LONG INDEX chunks
     bm25_hits, bm25_chunk_query, bm25_chunk_raw = bm25_retrieve_chunks(
         bm25_client,
         bm25_chunk_index,
@@ -136,6 +137,9 @@ def run_one(
         neighbor_window=int(args.neighbor_window),
         observability=args.observability,
     )
+
+    # 2B) bm25 HOT INDEX which contains users' personal data
+    # TODO: implement later. if we implement this, we should obtain the bm25 LONG INDEX, bm25 HOT INDEX, and vector chunks in parallel.
 
     # 3) vector chunks
     vec_anchor_paths: Optional[List[str]] = None
@@ -207,8 +211,11 @@ def run_one(
         else:
             # no BM25 evidence, use vector-only evidence (still citation-restricted)
             msgs_a = build_vector_only_prompt(question, vec_hits=vec_hits)
+
+        # ground the initial draft in BM25 (or vector-only) evidence
         grounded_draft = call_llm_chat(llm, messages=msgs_a, model=model, temperature=temperature, top_p=top_p, max_tokens=max_tokens)
 
+        # refine with vector context if available
         if bm25_hits and vec_hits:
             msgs_b = build_refine_prompt(question, grounded_draft=grounded_draft, vec_hits=vec_hits)
             answer = call_llm_chat(llm, messages=msgs_b, model=model, temperature=temperature, top_p=top_p, max_tokens=max_tokens)
