@@ -473,8 +473,7 @@ def _format_hits(hits: List[RetrievalHit], *, title: str) -> str:
 
 
 def build_grounding_prompt(question: str, bm25_hits: List[RetrievalHit]) -> List[Dict[str, str]]:
-    print("***** Building grounding prompt...")
-
+    # print("***** Building grounding prompt...")
     context = _format_hits(bm25_hits, title="BM25 Grounding Evidence (authoritative facts)")
     system = (
         "Answer using ONLY the BM25 Grounding Evidence.\n"
@@ -482,10 +481,9 @@ def build_grounding_prompt(question: str, bm25_hits: List[RetrievalHit]) -> List
         "- Every factual claim must cite at least one [B#].\n"
         "- If evidence does not support the answer, respond: I don't know based on the provided evidence.\n"
         "- Do not quote the evidence headers/metadata. Use them only for citations.\n"
-        "- If there is conflicting evidence, disclose the conflict and data.\n"
+        "- If there is conflicting evidence, disclose the conflict with it's data.\n"
     )
     user = f"QUESTION:\n{question}\n\nGROUNDING_EVIDENCE:\n{context}\n"
-
     prompt_details = [{"role": "system", "content": system}, {"role": "user", "content": user}]
 
     print("=====================================================")
@@ -496,7 +494,7 @@ def build_grounding_prompt(question: str, bm25_hits: List[RetrievalHit]) -> List
 
 
 def build_vector_only_prompt(question: str, vec_hits: List[RetrievalHit]) -> List[Dict[str, str]]:
-    print("***** Building vector-only prompt...")
+    # print("***** Building vector-only prompt...")
     context = _format_hits(vec_hits, title="Vector Evidence (semantic fallback)")
     system = (
         "Answer using ONLY the Vector Evidence.\n"
@@ -516,8 +514,7 @@ def build_vector_only_prompt(question: str, vec_hits: List[RetrievalHit]) -> Lis
 
 
 def build_refine_prompt(question: str, grounded_draft: str, vec_hits: List[RetrievalHit]) -> List[Dict[str, str]]:
-    print("***** Building refine prompt...")
-
+    # print("***** Building refine prompt...")
     vec_context = _format_hits(vec_hits, title="Vector Semantic Context (phrasing/terminology support)")
     system = (
         "Rewrite the grounded draft for clarity.\n"
@@ -526,7 +523,7 @@ def build_refine_prompt(question: str, grounded_draft: str, vec_hits: List[Retri
         "- Preserve [B#] citations exactly.\n"
         "- You may add brief non-factual clarifications supported by vector context and cite [V#].\n"
         "- Output ONLY the rewritten answer.\n"
-        "- If there is conflicting evidence, disclose the conflict and data.\n"
+        "- If there is conflicting evidence, disclose the conflict with it's data.\n"
     )
     user = (
         f"QUESTION:\n{question}\n\n"
@@ -543,8 +540,7 @@ def build_refine_prompt(question: str, grounded_draft: str, vec_hits: List[Retri
 
 
 def build_single_pass_prompt(question: str, bm25_hits: List[RetrievalHit], vec_hits: List[RetrievalHit]) -> List[Dict[str, str]]:
-    print("***** Building single-pass prompt...")
-
+    # print("***** Building single-pass prompt...")
     bm25_context = _format_hits(bm25_hits, title="BM25 Grounding Evidence (authoritative facts)")
     vec_context = _format_hits(vec_hits, title="Vector Semantic Context (phrasing/terminology support)")
     system = (

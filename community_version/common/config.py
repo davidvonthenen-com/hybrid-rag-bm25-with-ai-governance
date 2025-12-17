@@ -84,11 +84,11 @@ class Settings:
     os_profile: bool = False
 
     # Embeddings
-    embedding_model: str = "thenlper/gte-small"
+    embedding_model: str = "Qwen/Qwen3-Embedding-0.6B"  # use thenlper/gte-small or Qwen/Qwen3-Embedding-0.6B
 
     # Llama.cpp
     llama_model_path: str = "neural-chat-7b-v3-3.Q4_K_M.gguf"
-    llama_ctx: int = 32768                    # keep conservative by default on laptops
+    llama_ctx: int = 65536                    # keep conservative by default on laptops 32768 or 65536
     llama_n_threads: int = max(1, (os.cpu_count() or 4) - 1)
     llama_n_gpu_layers: int = 20             # modest offload; fallback logic drops to CPU if needed
     llama_n_batch: int = 256                 # prompt processing batch
