@@ -32,6 +32,7 @@ from common.models import RetrievalHit
 from common.named_entity import extract_entities
 from common.opensearch_client import create_long_client, create_vector_client
 from citations import extract_citations
+from citation_repair import ensure_answer_has_citations
 from common.llm import (
     build_grounding_prompt,
     build_refine_prompt,
@@ -208,6 +209,18 @@ def run_one(
             answer = grounded_draft
 
     citations = extract_citations(answer)
+    answer, citations, citation_repaired = ensure_answer_has_citations(
+        question,
+        answer,
+        bm25_hits=bm25_hits,
+        vec_hits=vec_hits,
+        llm=llm,
+        model=model,
+        temperature=temperature,
+        top_p=top_p,
+        max_tokens=max_tokens,
+        llm_call=call_llm_chat,
+    )
 
     audit: Dict[str, Any] = {
         "question": question,
@@ -242,6 +255,7 @@ def run_one(
             "grounded_draft": grounded_draft,
             "final_answer": answer,
             "citations_in_answer": citations,
+            "citation_repair_attempted": citation_repaired,
         },
     }
 
@@ -251,6 +265,8 @@ def run_one(
 def append_jsonl(path: str, record: Dict[str, Any]) -> None:
     with open(path, "a", encoding="utf-8") as f:
         f.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
+
+
 
 
 def run_queries(
