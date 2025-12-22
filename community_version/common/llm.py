@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from functools import lru_cache
@@ -32,12 +33,40 @@ from .opensearch_client import (
 LOGGER = get_logger(__name__)
 
 
+def _load_fireworks_client(settings: Settings) -> OpenAI:
+    """Create an OpenAI-compatible client configured for Fireworks AI.
+
+    Args:
+        settings: Runtime settings containing Fireworks configuration.
+    Returns:
+        An OpenAI client pointed at the Fireworks AI endpoint.
+    Raises:
+        RuntimeError: If the FIREWORKS_API_KEY environment variable is missing.
+    """
+
+    api_key = os.getenv("FIREWORKS_API_KEY")
+    if not api_key:
+        raise RuntimeError("FIREWORKS_API_KEY must be set when using Fireworks AI.")
+
+    LOGGER.info("Connecting to Fireworks AI at %s", settings.fireworks_base_url)
+    client = OpenAI(
+        base_url=settings.fireworks_base_url,
+        api_key=api_key,
+    )
+    setattr(client, "default_model", settings.fireworks_model)
+    setattr(client, "use_fireworks_completions", True)
+    return client
+
+
 @lru_cache(maxsize=1)
 def load_llm(settings: Optional[Settings] = None) -> OpenAI:
     """Construct and cache an OpenAI-compatible client for the LLM server."""
 
     if settings is None:
         settings = load_settings()
+
+    if settings.fireworksai:
+        return _load_fireworks_client(settings)
 
     LOGGER.info("Connecting to LLM server at %s", settings.llm_server_url)
     client = OpenAI(
@@ -407,6 +436,23 @@ def call_llm_chat(
             max_tokens=max_tokens,
         )
         return _extract_llm_text(resp)
+
+    if getattr(llm, "use_fireworks_completions", False):
+        completions = getattr(llm, "completions", None)
+        create = getattr(completions, "create", None) if completions is not None else None
+        if callable(create):
+            prompt = _messages_to_prompt(messages)
+            resolved_model = model or getattr(llm, "default_model", None)
+            kwargs: Dict[str, Any] = {
+                "prompt": prompt,
+                "temperature": temperature,
+                "top_p": top_p,
+                "max_tokens": max_tokens,
+            }
+            if resolved_model:
+                kwargs["model"] = resolved_model
+            resp = create(**kwargs)
+            return _extract_llm_text(resp)
 
     # 2) OpenAI-like client: llm.chat.completions.create(...)
     chat = getattr(llm, "chat", None)

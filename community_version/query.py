@@ -22,12 +22,10 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
 import time
+from dataclasses import replace
 from typing import Any, Dict, List, Optional, Sequence, Tuple
-
-from openai import OpenAI
 
 from common.bm25 import bm25_retrieve_chunks, bm25_retrieve_doc_anchors
 from common.config import load_settings
@@ -63,6 +61,7 @@ _CITATION_TOKEN_RE = re.compile(r"\b([BV]\d+)\b")
 # --------------------------------------------------------------------------------------
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
+    settings = load_settings()
     p = argparse.ArgumentParser(
         description="Hybrid RAG query (BM25 grounding + vector semantic support) with full auditability."
     )
@@ -86,7 +85,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     p.add_argument("--max-tokens", type=int, default=700)
     p.add_argument("--top-p", type=float, default=0.9)
     p.add_argument("--single-pass", action="store_true", default=False)
-    p.add_argument("--fireworksai", action="store_true", default=False,
+    p.add_argument("--fireworksai", action="store_true", default=settings.fireworksai,
                    help="Use the Fireworks AI OpenAI-compatible endpoint.")
 
     # Index override hooks (optional)
@@ -104,25 +103,13 @@ def _load_llm_from_args(args: argparse.Namespace) -> Any:
         args: Parsed CLI arguments.
     Returns:
         OpenAI-compatible client instance.
-    Raises:
-        RuntimeError: If Fireworks AI is requested without an API key.
     """
 
-    if not args.fireworksai:
-        return load_llm()
-
-    api_key = os.getenv("FIREWORKS_API_KEY")
-    if not api_key:
-        raise RuntimeError("FIREWORKS_API_KEY must be set when using --fireworksai.")
-
     settings = load_settings()
-    LOGGER.info("Using Fireworks AI OpenAI-compatible endpoint.")
-    client = OpenAI(
-        base_url="https://api.fireworks.ai/inference/v1",
-        api_key=api_key,
-    )
-    setattr(client, "default_model", settings.llm_server_model)
-    return client
+    if args.fireworksai:
+        settings = replace(settings, fireworksai=True)
+        LOGGER.info("Using Fireworks AI OpenAI-compatible endpoint.")
+    return load_llm(settings)
 
 
 def _extract_citations(answer: str) -> List[str]:
