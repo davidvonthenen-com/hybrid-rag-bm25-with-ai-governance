@@ -5,10 +5,9 @@ import json
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from functools import lru_cache
-from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from llama_cpp import Llama
+from openai import OpenAI
 
 from .bm25 import rerank_hits_with_bm25
 from .config import Settings, load_settings
@@ -34,31 +33,19 @@ LOGGER = get_logger(__name__)
 
 
 @lru_cache(maxsize=1)
-def load_llm(settings: Optional[Settings] = None) -> Llama:
-    """Construct and cache a ``llama_cpp`` model instance."""
+def load_llm(settings: Optional[Settings] = None) -> OpenAI:
+    """Construct and cache an OpenAI-compatible client for the LLM server."""
 
     if settings is None:
         settings = load_settings()
 
-    model_path = Path(settings.llama_model_path).expanduser()
-    LOGGER.info("Loading LLaMA model from %s", model_path)
-
-    kwargs: Dict[str, Any] = {
-        "model_path": str(model_path),
-        "n_ctx": settings.llama_ctx,
-        "n_threads": settings.llama_n_threads,
-        "n_gpu_layers": settings.llama_n_gpu_layers,
-        "n_batch": settings.llama_n_batch,
-        "chat_format": "chatml",
-        "verbose": False,
-    }
-
-    if settings.llama_n_ubatch is not None:
-        kwargs["n_ubatch"] = settings.llama_n_ubatch
-    if settings.llama_low_vram:
-        kwargs["low_vram"] = True
-
-    return Llama(**kwargs)
+    LOGGER.info("Connecting to LLM server at %s", settings.llm_server_url)
+    client = OpenAI(
+        base_url=settings.llm_server_url,
+        api_key=settings.llm_server_api_key,
+    )
+    setattr(client, "default_model", settings.llm_server_model)
+    return client
 
 
 def _save_results(path: str, payload: Dict[str, Any]) -> None:
@@ -146,7 +133,7 @@ def _merge_hybrid_ranked(
 
 
 def generate_answer(
-    llm: Llama,
+    llm: Any,
     question: str,
     context: str,
     *,
@@ -166,16 +153,18 @@ def generate_answer(
     if observability:
         LOGGER.info("LLM prompt context length=%d chars", len(context))
 
-    response = llm.create_chat_completion(
-        messages=[
-            {"role": "system", "content": system_msg},
-            {"role": "user", "content": user_prompt},
-        ],
+    messages = [
+        {"role": "system", "content": system_msg},
+        {"role": "user", "content": user_prompt},
+    ]
+    return call_llm_chat(
+        llm,
+        messages=messages,
+        model=getattr(llm, "default_model", None),
         temperature=temperature,
         top_p=top_p,
         max_tokens=max_tokens,
     )
-    return response["choices"][0]["message"]["content"].strip()
 
 
 def _build_bm25_query(
@@ -430,8 +419,9 @@ def call_llm_chat(
                 "temperature": temperature,
                 "max_tokens": max_tokens,
             }
-            if model:
-                kwargs["model"] = model
+            resolved_model = model or getattr(llm, "default_model", None)
+            if resolved_model:
+                kwargs["model"] = resolved_model
             resp = create(**kwargs)
             return _extract_llm_text(resp)
 

@@ -95,6 +95,11 @@ class Settings:
     llama_n_ubatch: Optional[int] = 256      # physical micro-batch; None to let llama.cpp choose
     llama_low_vram: bool = True              # reduce Metal VRAM usage
 
+    # LLM server (OpenAI-compatible REST endpoint)
+    llm_server_url: str = "http://127.0.0.1:8001/v1"
+    llm_server_api_key: str = "local-llm"
+    llm_server_model: str = "local-llm"
+
     # Named entity recognition service
     ner_url: str = "http://127.0.0.1:8000/ner"
     ner_timeout_secs: float = 5.0
@@ -172,6 +177,11 @@ def load_settings() -> Settings:
         llama_n_batch=_get_int("LLAMA_N_BATCH", Settings.llama_n_batch),
         llama_n_ubatch=_get_int("LLAMA_N_UBATCH", Settings.llama_n_ubatch or 0) or None,
         llama_low_vram=_get_bool("LLAMA_LOW_VRAM", Settings.llama_low_vram),
+
+        # LLM server (OpenAI-compatible REST)
+        llm_server_url=os.getenv("LLM_SERVER_URL", Settings.llm_server_url),
+        llm_server_api_key=os.getenv("LLM_SERVER_API_KEY", Settings.llm_server_api_key),
+        llm_server_model=os.getenv("LLM_SERVER_MODEL", Settings.llm_server_model),
 
         # Retrieval / ranking
         search_size=_get_int("SEARCH_SIZE", Settings.search_size),
