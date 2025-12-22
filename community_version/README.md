@@ -154,6 +154,7 @@ In this scenario, we will ingest data into the long-term OpenSearch and then exe
 
 2. **Perform a Simple Query**: Run `python query.py`
  This script poses a sample question to the system. This will retrieve facts from both the **long-term** and the **hot** OpenSearch instances. If you enable the debugging and tracing, you will see the query operation search for keywords in both OpenSearch instances. Since only the **long-term** instance has data, you will only see results from the **long-term** instance return back to the query.
+  - To use Fireworks AI instead of the local OpenAI-compatible LLM server, set `FIREWORKS_API_KEY` and run `python query.py --fireworksai`. You can also set `FIREWORKS_AI=true` in your environment to make it the default.
 
 ### 2. Reinforcement Learning
 

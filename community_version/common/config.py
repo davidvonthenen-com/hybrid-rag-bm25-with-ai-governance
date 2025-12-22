@@ -101,6 +101,9 @@ class Settings:
     llm_server_url: str = "http://127.0.0.1:8001/v1"
     llm_server_api_key: str = "local-llm"
     llm_server_model: str = "local-llm"
+    fireworksai: bool = False
+    fireworks_base_url: str = "https://api.fireworks.ai/inference/v1"
+    fireworks_model: str = "accounts/fireworks/models/llama-v3p1-8b-instruct"
 
     # Named entity recognition service
     ner_url: str = "http://127.0.0.1:8000/ner"
@@ -180,6 +183,9 @@ def load_settings() -> Settings:
         llm_server_url=os.getenv("LLM_SERVER_URL", Settings.llm_server_url),
         llm_server_api_key=os.getenv("LLM_SERVER_API_KEY", Settings.llm_server_api_key),
         llm_server_model=os.getenv("LLM_SERVER_MODEL", Settings.llm_server_model),
+        fireworksai=_get_bool("FIREWORKS_AI", Settings.fireworksai),
+        fireworks_base_url=os.getenv("FIREWORKS_BASE_URL", Settings.fireworks_base_url),
+        fireworks_model=os.getenv("FIREWORKS_MODEL", Settings.fireworks_model),
 
         # Retrieval / ranking
         search_size=_get_int("SEARCH_SIZE", Settings.search_size),
