@@ -98,6 +98,7 @@ def create_app() -> Flask:
     """Create the Flask app that serves OpenAI-compatible endpoints."""
     app = Flask(__name__)
     settings = load_settings()
+    _load_local_llm(settings)
 
     @app.route("/health", methods=["GET"])
     def health() -> tuple[Dict[str, Any], int]:
