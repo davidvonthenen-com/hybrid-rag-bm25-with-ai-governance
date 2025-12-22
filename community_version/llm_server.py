@@ -10,8 +10,8 @@ from typing import Any, Dict, List, Optional
 from flask import Flask, jsonify, request
 from llama_cpp import Llama
 
-from .config import Settings, load_settings
-from .logging import get_logger
+from common.config import Settings, load_settings
+from common.logging import get_logger
 
 LOGGER = get_logger(__name__)
 
@@ -113,21 +113,21 @@ def create_app() -> Flask:
             }
         ), 200
 
-    @app.route("/v1/models", methods=["GET"])
-    def models() -> tuple[Dict[str, Any], int]:
-        return jsonify(
-            {
-                "object": "list",
-                "data": [
-                    {
-                        "id": settings.llm_server_model,
-                        "object": "model",
-                        "created": int(time.time()),
-                        "owned_by": "local",
-                    }
-                ],
-            }
-        ), 200
+    # @app.route("/v1/models", methods=["GET"])
+    # def models() -> tuple[Dict[str, Any], int]:
+    #     return jsonify(
+    #         {
+    #             "object": "list",
+    #             "data": [
+    #                 {
+    #                     "id": settings.llm_server_model,
+    #                     "object": "model",
+    #                     "created": int(time.time()),
+    #                     "owned_by": "local",
+    #                 }
+    #             ],
+    #         }
+    #     ), 200
 
     @app.route("/v1/chat/completions", methods=["POST"])
     def chat_completions() -> tuple[Dict[str, Any], int]:
