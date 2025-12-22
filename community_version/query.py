@@ -29,6 +29,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 from common.bm25 import bm25_retrieve_chunks, bm25_retrieve_doc_anchors
 from common.embeddings import vector_retrieve_chunks
 from common.llm import (
+    build_citation_repair_prompt,
     build_grounding_prompt,
     build_refine_prompt,
     build_single_pass_prompt,
@@ -43,7 +44,14 @@ from common.opensearch_client import create_long_client, create_vector_client
 
 LOGGER = get_logger(__name__)
 
-_CITATION_RE = re.compile(r"\[(B\d+|V\d+)\]")
+# Citations are expected to be inserted inline in the answer as tags like:
+#   [B1]  (grounding chunk #1)
+#   [V2]  (vector chunk #2)
+# Models sometimes emit grouped citations like "[B1, B2]".
+# We therefore extract *tokens* inside any bracket/paren groups.
+_BRACKET_GROUP_RE = re.compile(r"\[([^\]]+)\]")
+_PAREN_GROUP_RE = re.compile(r"\(([^\)]+)\)")
+_CITATION_TOKEN_RE = re.compile(r"\b([BV]\d+)\b")
 
 
 # --------------------------------------------------------------------------------------
@@ -60,10 +68,10 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     p.add_argument("--save-results", type=str, default=None, help="Append JSONL records to this path.")
 
     # Retrieval knobs
-    p.add_argument("--top-k", type=int, default=10, help="Total evidence chunks budget.")
+    p.add_argument("--top-k", type=int, default=5, help="Total evidence chunks budget.")
     p.add_argument("--bm25-k", type=int, default=None, help="BM25 chunk budget (default ~60% of top-k).")
     p.add_argument("--vec-k", type=int, default=None, help="Vector chunk budget (default remainder).")
-    p.add_argument("--bm25-doc-k", type=int, default=20, help="Doc-level BM25 anchors to fetch.")
+    p.add_argument("--bm25-doc-k", type=int, default=5, help="Doc-level BM25 anchors to fetch.")
     p.add_argument("--neighbor-window", type=int, default=0, help="Add ±N adjacent chunks around BM25 hits.")
     p.add_argument("--vec-filter", choices=["anchor", "none"], default="anchor",
                    help="Filter vector search to BM25-anchored docs when possible.")
@@ -84,7 +92,42 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 
 
 def _extract_citations(answer: str) -> List[str]:
-    return sorted(set(m.group(1) for m in _CITATION_RE.finditer(answer)))
+    """Extract citation tokens from an LLM answer.
+
+    We expect citations like ``[B1]`` / ``[V2]``.
+    Some models emit grouped citations such as ``[B1, B2]`` or ``(B1)``.
+    This extractor therefore:
+      1) finds bracketed groups ``[...]`` and parenthesized groups ``(...)``
+      2) extracts citation *tokens* (B/V + digits) within those groups
+    """
+
+    if not answer:
+        return []
+
+    cites: set[str] = set()
+
+    for grp in _BRACKET_GROUP_RE.findall(answer):
+        for tok in _CITATION_TOKEN_RE.findall(grp):
+            cites.add(tok)
+
+    # Parentheses are more ambiguous, so only consider groups that look like citations.
+    for grp in _PAREN_GROUP_RE.findall(answer):
+        if "B" not in grp and "V" not in grp:
+            continue
+        for tok in _CITATION_TOKEN_RE.findall(grp):
+            cites.add(tok)
+
+    def _key(tag: str) -> Tuple[int, int, str]:
+        # Sort B before V, then numeric id.
+        prefix = tag[:1]
+        num = 10**9
+        try:
+            num = int(tag[1:])
+        except Exception:
+            pass
+        return (0 if prefix == "B" else 1, num, tag)
+
+    return sorted(cites, key=_key)
 
 
 # --------------------------------------------------------------------------------------
@@ -201,10 +244,73 @@ def run_one(
     top_p = float(args.top_p)
     max_tokens = int(args.max_tokens)
 
+    def _validate_cites(cites: List[str], allowed: set[str]) -> Tuple[List[str], List[str]]:
+        """Split citations into valid/invalid based on an allowed tag set."""
+        valid = [c for c in cites if c in allowed]
+        invalid = [c for c in cites if c not in allowed]
+        return valid, invalid
+
+    def _repair_missing_citations(
+        text: str,
+        *,
+        stage: str,
+        bm25_ctx: List[RetrievalHit],
+        vec_ctx: List[RetrievalHit],
+    ) -> Tuple[str, List[str], List[str], bool]:
+        """If citations are missing/invalid, ask the LLM to add them.
+
+        Returns: (possibly_repaired_text, valid_citations, invalid_citations, did_repair)
+        """
+
+        allowed = {h.handle for h in bm25_ctx} | {h.handle for h in vec_ctx}
+        raw = _extract_citations(text)
+        valid, invalid = _validate_cites(raw, allowed)
+
+        # If BM25 evidence is available for this stage, require at least one BM25 citation
+        # (otherwise models sometimes cite only vector chunks for factual claims).
+        if bm25_ctx and vec_ctx and valid and not any(c.startswith("B") for c in valid):
+            if not (text or "").strip().lower().startswith("i don't know"):
+                valid = []
+
+        # If we have at least one valid citation, accept as-is (even if there are some invalid ones).
+        if valid:
+            return text, valid, invalid, False
+
+        # If there is no evidence at all, there is nothing to cite.
+        if not allowed:
+            return text, [], invalid, False
+
+        # Ask the model to re-emit the answer with inline citations.
+        msgs_fix = build_citation_repair_prompt(
+            question,
+            draft=text,
+            bm25_hits=bm25_ctx,
+            vec_hits=vec_ctx,
+            stage=stage,
+        )
+        repaired = call_llm_chat(
+            llm,
+            messages=msgs_fix,
+            model=model,
+            temperature=0.0,  # make the repair step deterministic
+            top_p=top_p,
+            max_tokens=max_tokens,
+        )
+
+        raw2 = _extract_citations(repaired)
+        valid2, invalid2 = _validate_cites(raw2, allowed)
+        return repaired, valid2, invalid2, True
+
     grounded_draft: Optional[str] = None
     if args.single_pass:
         msgs = build_single_pass_prompt(question, bm25_hits=bm25_hits, vec_hits=vec_hits)
         answer = call_llm_chat(llm, messages=msgs, model=model, temperature=temperature, top_p=top_p, max_tokens=max_tokens)
+        answer, cites_valid, cites_invalid, did_repair = _repair_missing_citations(
+            answer,
+            stage="single_pass",
+            bm25_ctx=bm25_hits,
+            vec_ctx=vec_hits,
+        )
     else:
         if bm25_hits:
             msgs_a = build_grounding_prompt(question, bm25_hits=bm25_hits)
@@ -215,14 +321,30 @@ def run_one(
         # ground the initial draft in BM25 (or vector-only) evidence
         grounded_draft = call_llm_chat(llm, messages=msgs_a, model=model, temperature=temperature, top_p=top_p, max_tokens=max_tokens)
 
-        # refine with vector context if available
+        # Ensure the draft already has citations before any optional rewrite step.
+        grounded_draft, draft_cites_valid, draft_cites_invalid, did_repair_draft = _repair_missing_citations(
+            grounded_draft,
+            stage="grounding",
+            bm25_ctx=bm25_hits,
+            vec_ctx=[] if bm25_hits else vec_hits,
+        )
+
         if bm25_hits and vec_hits:
             msgs_b = build_refine_prompt(question, grounded_draft=grounded_draft, vec_hits=vec_hits)
             answer = call_llm_chat(llm, messages=msgs_b, model=model, temperature=temperature, top_p=top_p, max_tokens=max_tokens)
         else:
             answer = grounded_draft
 
-    citations = _extract_citations(answer)
+        answer, cites_valid, cites_invalid, did_repair = _repair_missing_citations(
+            answer,
+            stage="final",
+            bm25_ctx=bm25_hits,
+            vec_ctx=vec_hits,
+        )
+
+    citations = cites_valid if "cites_valid" in locals() else _extract_citations(answer)
+    citations_invalid = cites_invalid if "cites_invalid" in locals() else []
+    citation_repair_applied = bool(locals().get("did_repair")) or bool(locals().get("did_repair_draft"))
 
     audit: Dict[str, Any] = {
         "question": question,
@@ -257,6 +379,8 @@ def run_one(
             "grounded_draft": grounded_draft,
             "final_answer": answer,
             "citations_in_answer": citations,
+            "citations_invalid_in_answer": citations_invalid,
+            "citation_repair_applied": citation_repair_applied,
         },
     }
 
@@ -300,6 +424,13 @@ def run_queries(
 
         cites = audit.get("generation", {}).get("citations_in_answer", []) or []
         print("\nCitations used in answer:", ", ".join(cites) if cites else "(none)")
+
+        bad_cites = audit.get("generation", {}).get("citations_invalid_in_answer", []) or []
+        if bad_cites:
+            print("Invalid/unknown citation tags in answer:", ", ".join(bad_cites))
+
+        if audit.get("generation", {}).get("citation_repair_applied"):
+            print("Citation repair pass:", "APPLIED")
 
         if args.save_results:
             audit["timing_s"] = elapsed
