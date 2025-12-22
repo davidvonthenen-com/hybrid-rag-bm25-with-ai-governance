@@ -88,7 +88,9 @@ class Settings:
 
     # Llama.cpp
     llama_model_path: str = "neural-chat-7b-v3-3.Q4_K_M.gguf"
-    llama_ctx: int = 65536                    # keep conservative by default on laptops 32768 or 65536
+    # llama_model_path: str = "Ministral-3-3B-Instruct-2512-Q4_K_M.gguf" # BAD
+    # llama_model_path: str = "Qwen2.5-7B-Instruct-1M-Q5_K_M.gguf"
+    llama_ctx: int = 32768                  # "neural-chat = 32768, Ministral = 262144, Qwen = 1010000
     llama_n_threads: int = max(1, (os.cpu_count() or 4) - 1)
     llama_n_gpu_layers: int = 20             # modest offload; fallback logic drops to CPU if needed
     llama_n_batch: int = 256                 # prompt processing batch
@@ -103,10 +105,6 @@ class Settings:
     # Named entity recognition service
     ner_url: str = "http://127.0.0.1:8000/ner"
     ner_timeout_secs: float = 5.0
-
-    # RAG
-    rag_top_k: int = 3
-    rag_num_candidates: int = 50
 
     # Server
     server_host: str = "0.0.0.0"
@@ -191,10 +189,6 @@ def load_settings() -> Settings:
         ),
         os_explain=_get_bool("OS_EXPLAIN", Settings.os_explain),
         os_profile=_get_bool("OS_PROFILE", Settings.os_profile),
-
-        # RAG
-        rag_top_k=_get_int("RAG_TOP_K", Settings.rag_top_k),
-        rag_num_candidates=_get_int("RAG_NUM_CANDIDATES", Settings.rag_num_candidates),
 
         # NER
         ner_url=os.getenv("NER_URL", Settings.ner_url),

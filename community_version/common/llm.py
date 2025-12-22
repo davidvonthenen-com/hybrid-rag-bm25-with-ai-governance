@@ -451,29 +451,80 @@ def call_llm_chat(
 
 
 def _format_hits(hits: List[RetrievalHit], *, title: str) -> str:
-    blocks = [f"## {title}"]
+    """Render retrieval hits into a tag-delimited context block.
+
+    Each hit is wrapped in an explicit open/close tag so multi-line chunks
+    remain unambiguous:
+
+        [B1]
+        ...text...
+        [/B1]
+
+    This makes it easier for smaller instruction models to reliably reference
+    chunks and for downstream parsing/auditing to remain robust.
+    """
+
+    if not hits:
+        return f"=== {title} ===\n(none)"
+
+    blocks: List[str] = [f"=== {title} ==="]
     for h in hits:
-        meta = [f"handle={h.handle}", f"score={h.score:.4f}", f"path={h.path}"]
+        open_tag = f"[{h.handle}]"
+        close_tag = f"[/{h.handle}]"
+        # Keep metadata minimal to reduce the chance the model quotes it.
+        meta: List[str] = []
+        if h.path:
+            meta.append(f"path={h.path}")
         if h.chunk_index is not None and h.chunk_count is not None:
             meta.append(f"chunk={h.chunk_index}/{h.chunk_count}")
         if h.category:
             meta.append(f"category={h.category}")
-        blocks.append(f"[{h.handle}] ({', '.join(meta)})\n{h.text}".strip())
+        meta_line = f"META: {', '.join(meta)}" if meta else ""
+
+        text = (h.text or "").strip()
+        if meta_line:
+            blocks.append(f"{open_tag}\n{meta_line}\n{text}\n{close_tag}".strip())
+        else:
+            blocks.append(f"{open_tag}\n{text}\n{close_tag}".strip())
+
     return "\n\n".join(blocks).strip()
+
+
+def _allowed_citation_tags(hits: List[RetrievalHit]) -> List[str]:
+    """Return citation tags (opening tags only) for a set of hits."""
+
+    out: List[str] = []
+    for h in hits:
+        handle = (h.handle or "").strip()
+        if not handle:
+            continue
+        out.append(f"[{handle}]")
+    return out
 
 
 def build_grounding_prompt(question: str, bm25_hits: List[RetrievalHit]) -> List[Dict[str, str]]:
     # print("***** Building grounding prompt...")
     context = _format_hits(bm25_hits, title="BM25 Grounding Evidence (authoritative facts)")
+    allowed = " ".join(_allowed_citation_tags(bm25_hits)) if bm25_hits else "(none)"
     system = (
-        "Answer using ONLY the BM25 Grounding Evidence.\n"
-        "Rules:\n"
-        "- Every factual claim must cite at least one [B#].\n"
-        "- If evidence does not support the answer, respond: I don't know based on the provided evidence.\n"
-        "- Do not quote the evidence headers/metadata. Use them only for citations.\n"
-        "- If there is conflicting evidence, disclose the conflict with it's data.\n"
+        "You are a grounded QA assistant. Answer using ONLY the BM25 Grounding Evidence.\n"
+        "Evidence chunks are delimited as [B#] ... [/B#].\n"
+        "\n"
+        "CITATION RULES (mandatory):\n"
+        f"- Allowed citation tags: {allowed}\n"
+        "- After EVERY sentence that contains a factual claim, append one or more citation tags.\n"
+        "- Only cite BM25 context as [B#]. Never use closing tags like [/B1] in your answer.\n"
+        # "- Use the opening tag only (e.g., [B1]); never use closing tags like [/B1] in your answer.\n"
+        # "- If multiple citations are needed, write them back-to-back like [B1][B2]. Do NOT write [B1, B2].\n"
+        "- Never invent citation numbers or use tags not listed above.\n"
+        "\n"
+        "If the evidence does not support the answer, write exactly: I don't know based on the provided evidence.\n"
+        "Do not quote the evidence headers/metadata.\n"
+        "If evidence conflicts, disclose the conflict.\n"
+        "Output ONLY the answer text."
     )
     user = f"QUESTION:\n{question}\n\nGROUNDING_EVIDENCE:\n{context}\n"
+
     prompt_details = [{"role": "system", "content": system}, {"role": "user", "content": user}]
 
     print("=====================================================")
@@ -486,12 +537,22 @@ def build_grounding_prompt(question: str, bm25_hits: List[RetrievalHit]) -> List
 def build_vector_only_prompt(question: str, vec_hits: List[RetrievalHit]) -> List[Dict[str, str]]:
     # print("***** Building vector-only prompt...")
     context = _format_hits(vec_hits, title="Vector Evidence (semantic fallback)")
+    allowed = " ".join(_allowed_citation_tags(vec_hits)) if vec_hits else "(none)"
     system = (
         "Answer using ONLY the Vector Evidence.\n"
-        "Rules:\n"
-        "- Every factual claim must cite at least one [V#].\n"
-        "- If evidence does not support the answer, respond: I don't know based on the provided evidence.\n"
-        "- Do not quote the evidence headers/metadata.\n"
+        "Evidence chunks are delimited as [V#] ... [/V#].\n"
+        "\n"
+        "CITATION RULES (mandatory):\n"
+        f"- Allowed citation tags: {allowed}\n"
+        "- After EVERY sentence that contains a factual claim, append one or more citation tags.\n"
+        "- Only cite vector context as [V#]. Never use closing tags like [/V1] in your answer.\n"
+        # "- Use the opening tag only (e.g., [V1]); never use closing tags like [/V1] in your answer.\n"
+        # "- If multiple citations are needed, write them back-to-back like [V1][V2]. Do NOT write [V1, V2].\n"
+        "- Never invent citation numbers or use tags not listed above.\n"
+        "\n"
+        "If evidence does not support the answer, write exactly: I don't know based on the provided evidence.\n"
+        "Do not quote the evidence headers/metadata.\n"
+        "Output ONLY the answer text."
     )
     user = f"QUESTION:\n{question}\n\nEVIDENCE:\n{context}\n"
     prompt_details = [{"role": "system", "content": system}, {"role": "user", "content": user}]
@@ -506,14 +567,22 @@ def build_vector_only_prompt(question: str, vec_hits: List[RetrievalHit]) -> Lis
 def build_refine_prompt(question: str, grounded_draft: str, vec_hits: List[RetrievalHit]) -> List[Dict[str, str]]:
     # print("***** Building refine prompt...")
     vec_context = _format_hits(vec_hits, title="Vector Semantic Context (phrasing/terminology support)")
+    allowed_v = " ".join(_allowed_citation_tags(vec_hits)) if vec_hits else "(none)"
     system = (
-        "Rewrite the grounded draft for clarity.\n"
-        "Rules:\n"
-        "- Do NOT add new factual claims beyond what appears in the draft.\n"
-        "- Preserve [B#] citations exactly.\n"
-        "- You may add brief non-factual clarifications supported by vector context and cite [V#].\n"
-        "- Output ONLY the rewritten answer.\n"
-        "- If there is conflicting evidence, disclose the conflict with it's data.\n"
+        "Rewrite the grounded draft for clarity and readability.\n"
+        "\n"
+        "CRITICAL RULES:\n"
+        "- Do NOT add any new factual claims beyond what appears in the grounded draft.\n"
+        "- Preserve all existing [B#] citations EXACTLY (do not delete, renumber, merge, or move them).\n"
+        "- You MAY add brief non-factual clarifications (definitions, paraphrases) supported by the vector context.\n"
+        "\n"
+        "VECTOR CITATIONS (optional):\n"
+        f"- Allowed vector citation tags: {allowed_v}\n"
+        "- Only cite vector context as [V#]. Never use closing tags like [/V1] in your answer.\n"
+        # "- If multiple vector citations are needed, write [V1][V2] (do NOT write [V1, V2]).\n"
+        "\n"
+        "Output ONLY the rewritten answer text.\n"
+        "If there is conflicting evidence, disclose the conflict and data.\n"
     )
     user = (
         f"QUESTION:\n{question}\n\n"
@@ -533,16 +602,106 @@ def build_single_pass_prompt(question: str, bm25_hits: List[RetrievalHit], vec_h
     # print("***** Building single-pass prompt...")
     bm25_context = _format_hits(bm25_hits, title="BM25 Grounding Evidence (authoritative facts)")
     vec_context = _format_hits(vec_hits, title="Vector Semantic Context (phrasing/terminology support)")
+    allowed_b = " ".join(_allowed_citation_tags(bm25_hits)) if bm25_hits else "(none)"
+    allowed_v = " ".join(_allowed_citation_tags(vec_hits)) if vec_hits else "(none)"
     system = (
         "Answer using the provided contexts.\n"
         "Separation of concerns:\n"
         "- Use BM25 Grounding Evidence for factual claims.\n"
         "- Use Vector Semantic Context only for wording/terminology, not new facts.\n"
-        "Rules:\n"
-        "- Every factual claim must cite [B#].\n"
-        "- If BM25 evidence does not support the answer, respond: I don't know based on the provided evidence.\n"
+        "\n"
+        "BM25 CITATIONS (mandatory for facts):\n"
+        f"- Allowed BM25 citation tags: {allowed_b}\n"
+        "- Only cite BM25 context as [B#]. Never use closing tags like [/B1] in your answer.\n"
+        # "- Only cite BM25 context as [B#], and only for definitions/paraphrases.\n"
+        # "- If multiple BM25 citations are needed, write [B1][B2] (do NOT write [B1, B2]).\n"
+        "- Never use closing tags like [/B1] in your answer.\n"
+        "\n"
+        "VECTOR CITATIONS (optional, non-factual clarifications only):\n"
+        f"- Allowed vector citation tags: {allowed_v}\n"
+        "- Only cite vector context as [V#]. Never use closing tags like [/V1] in your answer.\n"
+        # "- Only cite vector context as [V#], and only for definitions/paraphrases.\n"
+        # "- If multiple vector citations are needed, write [V1][V2] (do NOT write [V1, V2]).\n"
+        "\n"
+        "If BM25 evidence does not support the answer, write exactly: I don't know based on the provided evidence.\n"
+        "Output ONLY the answer text."
     )
     user = f"QUESTION:\n{question}\n\n{bm25_context}\n\n{vec_context}\n"
+    prompt_details = [{"role": "system", "content": system}, {"role": "user", "content": user}]
+
+    print("=====================================================")
+    print(_messages_to_prompt(prompt_details))
+    print("=====================================================")
+
+    return prompt_details
+
+
+def build_citation_repair_prompt(
+    question: str,
+    *,
+    draft: str,
+    bm25_hits: List[RetrievalHit],
+    vec_hits: List[RetrievalHit],
+    stage: str = "final",
+) -> List[Dict[str, str]]:
+    """Build a prompt that makes the LLM add/repair inline citations.
+
+    This is intentionally strict and example-driven to increase compliance on
+    smaller instruction models.
+    """
+
+    bm25_context = _format_hits(bm25_hits, title="BM25 Grounding Evidence (authoritative facts)")
+    vec_context = _format_hits(vec_hits, title="Vector Semantic Context (phrasing/terminology support)")
+
+    allowed_b = " ".join(_allowed_citation_tags(bm25_hits)) if bm25_hits else "(none)"
+    allowed_v = " ".join(_allowed_citation_tags(vec_hits)) if vec_hits else "(none)"
+
+    if bm25_hits and not vec_hits:
+        modality_rule = (
+            "Use ONLY BM25 citations [B#] for factual claims. Do NOT use [V#]."
+        )
+    elif vec_hits and not bm25_hits:
+        modality_rule = (
+            "Use ONLY vector citations [V#] for factual claims (no BM25 evidence is available)."
+        )
+    else:
+        modality_rule = (
+            "Prefer BM25 citations [B#] for factual claims. Use [V#] only for non-factual clarifications."
+        )
+
+    system = (
+        "You are a citation-repair tool.\n"
+        f"Stage: {stage}\n"
+        "\n"
+        "TASK:\n"
+        "Rewrite the DRAFT ANSWER so that it includes REQUIRED inline citations.\n"
+        "Evidence chunks are delimited as [B#] ... [/B#] and [V#] ... [/V#].\n"
+        "Cite using ONLY the OPENING tags: [B1] or [V2].\n"
+        "\n"
+        "CITATION FORMAT (MANDATORY):\n"
+        f"- Allowed BM25 tags: {allowed_b}\n"
+        f"- Allowed vector tags: {allowed_v}\n"
+        # "- After EVERY sentence that contains a factual claim, append one or more citation tags.\n"
+        # "- If multiple citations are needed, write them back-to-back: [B1][B2] (NOT [B1, B2]).\n"
+        "- Never invent citation numbers or tags not listed above.\n"
+        "- Never output closing tags like [/B1] or [/V1] in the answer.\n"
+        "\n"
+        "CONTENT RULES:\n"
+        f"- {modality_rule}\n"
+        "- Do NOT add new facts beyond the evidence.\n"
+        "- Keep wording as close as possible to the draft; only add citations where needed.\n"
+        "- If a claim in the draft is not supported by the evidence, replace it with: I don't know based on the provided evidence.\n"
+        "\n"
+        "Output ONLY the revised answer text."
+    )
+
+    user = (
+        f"QUESTION:\n{question}\n\n"
+        f"DRAFT_ANSWER:\n{draft}\n\n"
+        f"EVIDENCE_BM25:\n{bm25_context}\n\n"
+        f"EVIDENCE_VECTOR:\n{vec_context}\n"
+    )
+
     prompt_details = [{"role": "system", "content": system}, {"role": "user", "content": user}]
 
     print("=====================================================")
@@ -561,4 +720,5 @@ __all__ = [
     "build_vector_only_prompt",
     "build_refine_prompt",
     "build_single_pass_prompt",
+    "build_citation_repair_prompt",
 ]
