@@ -28,14 +28,12 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from openai import OpenAI
 
-from common.config import Settings, load_settings
+from common.config import load_settings
 from common.bm25 import bm25_retrieve_chunks, bm25_retrieve_doc_anchors
 from common.embeddings import vector_retrieve_chunks
 from common.llm import (
-    # build_citation_repair_prompt,
     build_grounding_prompt,
     build_refine_prompt,
-    # build_single_pass_prompt,
     build_vector_only_prompt,
     call_llm_chat,
     load_llm,

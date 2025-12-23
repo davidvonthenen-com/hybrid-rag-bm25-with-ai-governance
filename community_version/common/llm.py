@@ -9,25 +9,9 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from openai import OpenAI
 
-from .bm25 import rerank_hits_with_bm25
 from .config import Settings, load_settings
-from .embeddings import embed_question, normalize_vector_hits
 from .logging import get_logger
 from .models import RetrievalHit
-from .named_entity import normalize_entities, post_ner
-from .opensearch_client import (
-    build_query_external_ranking,
-    build_query_opensearch_ranking,
-    combine_hits,
-    create_hot_client,
-    create_long_client,
-    create_vector_client,
-    knn_search_one,
-    rank_hits,
-    render_matches,
-    render_observability_summary,
-    search_one,
-)
 
 LOGGER = get_logger(__name__)
 
@@ -231,10 +215,7 @@ def build_grounding_prompt(question: str, bm25_hits: List[RetrievalHit]) -> List
         "CITATION RULES (mandatory):\n"
         f"- Allowed citation tags: {allowed}\n"
         "- After EVERY sentence that contains a factual claim, append one or more citation tags.\n"
-        # "- Only cite BM25 context as [B#]. Never use closing tags like [/B1] in your answer.\n"
         "- Only cite BM25 the opening tag only (e.g., [B1]). Never use closing tags like [/B1] in your answer.\n"
-        # "- Use the opening tag only (e.g., [B1]); never use closing tags like [/B1] in your answer.\n"
-        # "- If multiple citations are needed, write them back-to-back like [B1][B2]. Do NOT write [B1, B2].\n"
         "- Never invent citation numbers or use tags not listed above.\n"
         "\n"
         "If the evidence does not support the answer, write exactly: I don't know based on the provided evidence.\n"
@@ -264,10 +245,7 @@ def build_vector_only_prompt(question: str, vec_hits: List[RetrievalHit]) -> Lis
         "CITATION RULES (mandatory):\n"
         f"- Allowed citation tags: {allowed}\n"
         "- After EVERY sentence that contains a factual claim, append one or more citation tags.\n"
-        # "- Only cite vector context as [V#]. Never use closing tags like [/V1] in your answer.\n"
         "- Only cite vector opening tag only (e.g., [V1]). Never use closing tags like [/V1] in your answer.\n"
-        # "- Use the opening tag only (e.g., [V1]); never use closing tags like [/V1] in your answer.\n"
-        # "- If multiple citations are needed, write them back-to-back like [V1][V2]. Do NOT write [V1, V2].\n"
         "- Never invent citation numbers or use tags not listed above.\n"
         "\n"
         "If evidence does not support the answer, write exactly: I don't know based on the provided evidence.\n"
@@ -298,9 +276,7 @@ def build_refine_prompt(question: str, grounded_draft: str, vec_hits: List[Retri
         "\n"
         "VECTOR CITATIONS (optional):\n"
         f"- Allowed vector citation tags: {allowed_v}\n"
-        # "- Only cite vector context as [V#]. Never use closing tags like [/V1] in your answer.\n"
         "- Only cite vector opening tag only (e.g., [V1]). Never use closing tags like [/V1] in your answer.\n"
-        # "- If multiple vector citations are needed, write [V1][V2] (do NOT write [V1, V2]).\n"
         "\n"
         "Output ONLY the rewritten answer text.\n"
         "If there is conflicting evidence, disclose the conflict and data.\n"
