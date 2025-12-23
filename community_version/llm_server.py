@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import platform
 import time
 import uuid
 from functools import lru_cache
@@ -16,6 +17,21 @@ from common.logging import get_logger
 LOGGER = get_logger(__name__)
 
 
+def _is_apple_silicon() -> bool:
+    """Return True when running on Apple Silicon hardware."""
+
+    return platform.system() == "Darwin" and platform.machine() == "arm64"
+
+
+def _resolve_gpu_layers(settings: Settings) -> int:
+    """Pick an appropriate GPU offload value for the local runtime."""
+
+    n_gpu_layers = settings.llama_n_gpu_layers
+    if _is_apple_silicon() and n_gpu_layers == 0:
+        return -1
+    return n_gpu_layers
+
+
 @lru_cache(maxsize=1)
 def _load_local_llm(settings: Optional[Settings] = None) -> Llama:
     """Load and cache the local llama.cpp model for serving."""
@@ -25,11 +41,18 @@ def _load_local_llm(settings: Optional[Settings] = None) -> Llama:
     model_path = os.path.expanduser(settings.llama_model_path)
     LOGGER.info("Loading LLaMA model from %s", model_path)
 
+    n_gpu_layers = _resolve_gpu_layers(settings)
+    if _is_apple_silicon() and n_gpu_layers != 0:
+        LOGGER.info(
+            "Apple Silicon detected; using Metal GPU offload with n_gpu_layers=%s.",
+            n_gpu_layers,
+        )
+
     kwargs: Dict[str, Any] = {
         "model_path": model_path,
         "n_ctx": settings.llama_ctx,
         "n_threads": settings.llama_n_threads,
-        "n_gpu_layers": settings.llama_n_gpu_layers,
+        "n_gpu_layers": n_gpu_layers,
         "n_batch": settings.llama_n_batch,
         "chat_format": "chatml",
         "verbose": False,
