@@ -24,17 +24,18 @@ import argparse
 import json
 import re
 import time
-from dataclasses import replace
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from openai import OpenAI
+
+from common.config import Settings, load_settings
 from common.bm25 import bm25_retrieve_chunks, bm25_retrieve_doc_anchors
-from common.config import load_settings
 from common.embeddings import vector_retrieve_chunks
 from common.llm import (
-    build_citation_repair_prompt,
+    # build_citation_repair_prompt,
     build_grounding_prompt,
     build_refine_prompt,
-    build_single_pass_prompt,
+    # build_single_pass_prompt,
     build_vector_only_prompt,
     call_llm_chat,
     load_llm,
@@ -42,7 +43,7 @@ from common.llm import (
 from common.logging import get_logger
 from common.models import RetrievalHit
 from common.named_entity import extract_entities
-from common.opensearch_client import create_long_client, create_vector_client
+from common.opensearch_client import create_long_client, create_vector_client, MyOpenSearch
 
 LOGGER = get_logger(__name__)
 
@@ -61,7 +62,6 @@ _CITATION_TOKEN_RE = re.compile(r"\b([BV]\d+)\b")
 # --------------------------------------------------------------------------------------
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
-    settings = load_settings()
     p = argparse.ArgumentParser(
         description="Hybrid RAG query (BM25 grounding + vector semantic support) with full auditability."
     )
@@ -80,36 +80,10 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
                    help="Filter vector search to BM25-anchored docs when possible.")
 
     # LLM knobs
-    p.add_argument("--model", type=str, default=None, help="Optional override model name (if supported).")
     p.add_argument("--temperature", type=float, default=0.0)
-    p.add_argument("--max-tokens", type=int, default=700)
     p.add_argument("--top-p", type=float, default=0.9)
-    p.add_argument("--single-pass", action="store_true", default=False)
-    p.add_argument("--fireworksai", action="store_true", default=settings.fireworksai,
-                   help="Use the Fireworks AI OpenAI-compatible endpoint.")
-
-    # Index override hooks (optional)
-    p.add_argument("--bm25-full-index", type=str, default=None)
-    p.add_argument("--bm25-chunk-index", type=str, default=None)
-    p.add_argument("--vec-index", type=str, default=None)
 
     return p.parse_args(argv)
-
-
-def _load_llm_from_args(args: argparse.Namespace) -> Any:
-    """Create the LLM client based on CLI flags.
-
-    Args:
-        args: Parsed CLI arguments.
-    Returns:
-        OpenAI-compatible client instance.
-    """
-
-    settings = load_settings()
-    if args.fireworksai:
-        settings = replace(settings, fireworksai=True)
-        LOGGER.info("Using Fireworks AI OpenAI-compatible endpoint.")
-    return load_llm(settings)
 
 
 def _extract_citations(answer: str) -> List[str]:
@@ -158,18 +132,21 @@ def _extract_citations(answer: str) -> List[str]:
 def run_one(
     question: str,
     *,
-    bm25_client: Any,
-    vec_client: Any,
-    llm: Any,
+    bm25_client: MyOpenSearch,
+    vec_client: MyOpenSearch,
+    llm: OpenAI,
     args: argparse.Namespace,
 ) -> Tuple[str, Dict[str, Any]]:
     entities = extract_entities(question)
 
+    settings = load_settings()
+
     # Indices
-    bm25_full_index = args.bm25_full_index or getattr(bm25_client.settings, "opensearch_full_index", None)
+    bm25_full_index = settings.opensearch_full_index
     # TODO: need to deal with HOT INDEX or getattr(bm25_client.settings, "opensearch_hot_index", None)
-    bm25_chunk_index = args.bm25_chunk_index or getattr(bm25_client.settings, "opensearch_long_index", None)
-    vec_index = args.vec_index or getattr(vec_client.settings, "opensearch_vector_index", None)
+    bm25_chunk_index = settings.opensearch_long_index
+    vec_index = settings.opensearch_vector_index
+
     if not bm25_full_index or not bm25_chunk_index or not vec_index:
         raise RuntimeError("Could not resolve required index names (full, chunk, vector). Check settings/CLI overrides.")
 
@@ -260,112 +237,28 @@ def run_one(
             print(f"  {h.handle} score={h.score:.3f} chunk={h.chunk_index} path={h.path}")
 
     # Generation
-    model = args.model
+    model = settings.llm_server_model
+    max_tokens = settings.llama_ctx
     temperature = float(args.temperature)
     top_p = float(args.top_p)
-    max_tokens = int(args.max_tokens)
-
-    def _validate_cites(cites: List[str], allowed: set[str]) -> Tuple[List[str], List[str]]:
-        """Split citations into valid/invalid based on an allowed tag set."""
-        valid = [c for c in cites if c in allowed]
-        invalid = [c for c in cites if c not in allowed]
-        return valid, invalid
-
-    def _repair_missing_citations(
-        text: str,
-        *,
-        stage: str,
-        bm25_ctx: List[RetrievalHit],
-        vec_ctx: List[RetrievalHit],
-    ) -> Tuple[str, List[str], List[str], bool]:
-        """If citations are missing/invalid, ask the LLM to add them.
-
-        Returns: (possibly_repaired_text, valid_citations, invalid_citations, did_repair)
-        """
-
-        allowed = {h.handle for h in bm25_ctx} | {h.handle for h in vec_ctx}
-        raw = _extract_citations(text)
-        valid, invalid = _validate_cites(raw, allowed)
-
-        # If BM25 evidence is available for this stage, require at least one BM25 citation
-        # (otherwise models sometimes cite only vector chunks for factual claims).
-        if bm25_ctx and vec_ctx and valid and not any(c.startswith("B") for c in valid):
-            if not (text or "").strip().lower().startswith("i don't know"):
-                valid = []
-
-        # If we have at least one valid citation, accept as-is (even if there are some invalid ones).
-        if valid:
-            return text, valid, invalid, False
-
-        # If there is no evidence at all, there is nothing to cite.
-        if not allowed:
-            return text, [], invalid, False
-
-        # Ask the model to re-emit the answer with inline citations.
-        msgs_fix = build_citation_repair_prompt(
-            question,
-            draft=text,
-            bm25_hits=bm25_ctx,
-            vec_hits=vec_ctx,
-            stage=stage,
-        )
-        repaired = call_llm_chat(
-            llm,
-            messages=msgs_fix,
-            model=model,
-            temperature=0.0,  # make the repair step deterministic
-            top_p=top_p,
-            max_tokens=max_tokens,
-        )
-
-        raw2 = _extract_citations(repaired)
-        valid2, invalid2 = _validate_cites(raw2, allowed)
-        return repaired, valid2, invalid2, True
 
     grounded_draft: Optional[str] = None
-    if args.single_pass:
-        msgs = build_single_pass_prompt(question, bm25_hits=bm25_hits, vec_hits=vec_hits)
-        answer = call_llm_chat(llm, messages=msgs, model=model, temperature=temperature, top_p=top_p, max_tokens=max_tokens)
-        answer, cites_valid, cites_invalid, did_repair = _repair_missing_citations(
-            answer,
-            stage="single_pass",
-            bm25_ctx=bm25_hits,
-            vec_ctx=vec_hits,
-        )
+    if bm25_hits:
+        msgs_a = build_grounding_prompt(question, bm25_hits=bm25_hits)
     else:
-        if bm25_hits:
-            msgs_a = build_grounding_prompt(question, bm25_hits=bm25_hits)
-        else:
-            # no BM25 evidence, use vector-only evidence (still citation-restricted)
-            msgs_a = build_vector_only_prompt(question, vec_hits=vec_hits)
+        # no BM25 evidence, use vector-only evidence (still citation-restricted)
+        msgs_a = build_vector_only_prompt(question, vec_hits=vec_hits)
 
-        # ground the initial draft in BM25 (or vector-only) evidence
-        grounded_draft = call_llm_chat(llm, messages=msgs_a, model=model, temperature=temperature, top_p=top_p, max_tokens=max_tokens)
+    # ground the initial draft in BM25 (or vector-only) evidence
+    grounded_draft = call_llm_chat(llm, messages=msgs_a, model=model, temperature=temperature, top_p=top_p, max_tokens=max_tokens)
 
-        # Ensure the draft already has citations before any optional rewrite step.
-        grounded_draft, draft_cites_valid, draft_cites_invalid, did_repair_draft = _repair_missing_citations(
-            grounded_draft,
-            stage="grounding",
-            bm25_ctx=bm25_hits,
-            vec_ctx=[] if bm25_hits else vec_hits,
-        )
+    if bm25_hits and vec_hits:
+        msgs_b = build_refine_prompt(question, grounded_draft=grounded_draft, vec_hits=vec_hits)
+        answer = call_llm_chat(llm, messages=msgs_b, model=model, temperature=temperature, top_p=top_p, max_tokens=max_tokens)
+    else:
+        answer = grounded_draft
 
-        if bm25_hits and vec_hits:
-            msgs_b = build_refine_prompt(question, grounded_draft=grounded_draft, vec_hits=vec_hits)
-            answer = call_llm_chat(llm, messages=msgs_b, model=model, temperature=temperature, top_p=top_p, max_tokens=max_tokens)
-        else:
-            answer = grounded_draft
-
-        answer, cites_valid, cites_invalid, did_repair = _repair_missing_citations(
-            answer,
-            stage="final",
-            bm25_ctx=bm25_hits,
-            vec_ctx=vec_hits,
-        )
-
-    citations = cites_valid if "cites_valid" in locals() else _extract_citations(answer)
-    citations_invalid = cites_invalid if "cites_invalid" in locals() else []
-    citation_repair_applied = bool(locals().get("did_repair")) or bool(locals().get("did_repair_draft"))
+    citations = _extract_citations(answer)
 
     audit: Dict[str, Any] = {
         "question": question,
@@ -392,7 +285,6 @@ def run_one(
             "vector_hits": [h.to_jsonable() for h in vec_hits],
         },
         "generation": {
-            "single_pass": bool(args.single_pass),
             "model": model,
             "temperature": temperature,
             "top_p": top_p,
@@ -400,8 +292,6 @@ def run_one(
             "grounded_draft": grounded_draft,
             "final_answer": answer,
             "citations_in_answer": citations,
-            "citations_invalid_in_answer": citations_invalid,
-            "citation_repair_applied": citation_repair_applied,
         },
     }
 
@@ -420,7 +310,7 @@ def run_queries(
 ) -> None:
     bm25_client, _ = create_long_client()
     vec_client, _ = create_vector_client()
-    llm = _load_llm_from_args(args)
+    llm = load_llm()
 
     for question in questions:
         print("\n" + "=" * 100)
