@@ -100,7 +100,7 @@ class Settings:
     # llama_model_path: str = "Ministral-3-3B-Instruct-2512-Q4_K_M.gguf" # BAD
     llama_model_path: str = "Qwen2.5-7B-Instruct-1M-Q5_K_M.gguf"
     # llama_ctx: int = 32768                  # "neural-chat = 32768, Ministral = 262144, Qwen = 1010000
-    llama_ctx: int = 98304                  # "neural-chat = 32768, Ministral = 262144, Qwen = 1010000
+    llama_ctx: int = 65536                  # "neural-chat = 32768, Ministral = 262144, Qwen = 1010000
     llama_n_threads: int = max(1, (os.cpu_count() or 4) - 1)
     llama_n_gpu_layers: int = 20             # -1 offloads all layers when GPU backend is available
     llama_n_batch: int = 256                 # prompt processing batch
