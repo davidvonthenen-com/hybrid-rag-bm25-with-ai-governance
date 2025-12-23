@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import platform
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -46,7 +47,15 @@ def _get_float(name: str, default_val: float) -> float:
     try:
         return float(value)
     except ValueError:
-        return default_val
+    return default_val
+
+
+def _default_llama_n_gpu_layers() -> int:
+    """Return the default GPU layer offload value for the current platform."""
+
+    if platform.system() == "Darwin" and platform.machine() == "arm64":
+        return -1
+    return Settings.llama_n_gpu_layers
 
 
 @dataclass(frozen=True)
@@ -93,7 +102,7 @@ class Settings:
     # llama_ctx: int = 32768                  # "neural-chat = 32768, Ministral = 262144, Qwen = 1010000
     llama_ctx: int = 65536                  # "neural-chat = 32768, Ministral = 262144, Qwen = 1010000
     llama_n_threads: int = max(1, (os.cpu_count() or 4) - 1)
-    llama_n_gpu_layers: int = 20             # modest offload; fallback logic drops to CPU if needed
+    llama_n_gpu_layers: int = 20             # -1 offloads all layers when GPU backend is available
     llama_n_batch: int = 256                 # prompt processing batch
     llama_n_ubatch: Optional[int] = 256      # physical micro-batch; None to let llama.cpp choose
     llama_low_vram: bool = True              # reduce Metal VRAM usage
@@ -190,7 +199,7 @@ def load_settings() -> Settings:
         ),
         llama_ctx=llama_ctx,
         llama_n_threads=_get_int("LLAMA_N_THREADS", Settings.llama_n_threads),
-        llama_n_gpu_layers=_get_int("LLAMA_N_GPU_LAYERS", Settings.llama_n_gpu_layers),
+    llama_n_gpu_layers=_get_int("LLAMA_N_GPU_LAYERS", _default_llama_n_gpu_layers()),
         llama_n_batch=_get_int("LLAMA_N_BATCH", Settings.llama_n_batch),
         llama_n_ubatch=_get_int("LLAMA_N_UBATCH", Settings.llama_n_ubatch or 0) or None,
         llama_low_vram=_get_bool("LLAMA_LOW_VRAM", Settings.llama_low_vram),
