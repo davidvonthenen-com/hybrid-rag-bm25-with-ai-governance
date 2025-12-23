@@ -47,7 +47,7 @@ def _get_float(name: str, default_val: float) -> float:
     try:
         return float(value)
     except ValueError:
-    return default_val
+        return default_val
 
 
 def _default_llama_n_gpu_layers() -> int:
