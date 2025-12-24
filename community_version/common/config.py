@@ -97,10 +97,9 @@ class Settings:
 
     # Llama.cpp
     # llama_model_path: str = "neural-chat-7b-v3-3.Q4_K_M.gguf"
-    # llama_model_path: str = "Ministral-3-3B-Instruct-2512-Q4_K_M.gguf" # BAD
     llama_model_path: str = "Qwen2.5-7B-Instruct-1M-Q5_K_M.gguf"
-    # llama_ctx: int = 32768                  # "neural-chat = 32768, Ministral = 262144, Qwen = 1010000
-    llama_ctx: int = 65536                  # "neural-chat = 32768, Ministral = 262144, Qwen = 1010000
+    # llama_ctx: int = 32768                  # "neural-chat = 32768, Qwen = 65536/1010000
+    llama_ctx: int = 65536                  # "neural-chat = 32768, Qwen = 65536/1010000
     llama_n_threads: int = max(1, (os.cpu_count() or 4) - 1)
     llama_n_gpu_layers: int = 20             # -1 offloads all layers when GPU backend is available
     llama_n_batch: int = 256                 # prompt processing batch
@@ -131,16 +130,16 @@ def load_settings() -> Settings:
 
     llm_server_url=os.getenv("LLM_SERVER_URL", Settings.llm_server_url)
     if external_ai:
-        llm_server_url = Settings.external_base_url
+        llm_server_url = _get_str("EXTERNAL_LLM_URL", Settings.external_base_url)
     llm_server_api_key=os.getenv("LLM_SERVER_API_KEY", Settings.external_base_url)
     if external_ai:
-        llm_server_api_key = _get_str("EXTERNAL_API_KEY", "")
+        llm_server_api_key = _get_str("EXTERNAL_LLM_API_KEY", "")
     llm_server_model=os.getenv("LLM_SERVER_MODEL",  Settings.llm_server_model)
     if external_ai:
-        llm_server_model=os.getenv("LLM_SERVER_MODEL", Settings.external_model)
+        llm_server_model=os.getenv("EXTERNAL_LLM_MODEL", Settings.external_model)
     llama_ctx=_get_int("LLAMA_CTX", Settings.llama_ctx)
     if external_ai:
-        llama_ctx=65536
+        llama_ctx=os.getenv("EXTERNAL_LLM_MAX_TOKENS", 65536)
 
     return Settings(
         # Vector OpenSearch

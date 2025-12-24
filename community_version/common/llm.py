@@ -5,7 +5,7 @@ import json
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from functools import lru_cache
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from openai import OpenAI
 
@@ -16,7 +16,6 @@ from .models import RetrievalHit
 LOGGER = get_logger(__name__)
 
 
-@lru_cache(maxsize=1)
 def load_llm(settings: Optional[Settings] = None) -> OpenAI:
     """Construct and cache an OpenAI-compatible client for the LLM server."""
 
@@ -130,20 +129,14 @@ def call_llm_chat(
     llm: OpenAI,
     *,
     messages: List[Dict[str, str]],
-    model: Optional[str],
+    model: str,
     temperature: float,
     top_p: float,
     max_tokens: int,
 ) -> str:
     """Chat completion using the OpenAI client."""
-    resolved_model = model or getattr(llm, "default_model", None)
-    # print("----------------------- URL:", llm.base_url)
-    # print("----------------------- model:", resolved_model)
-    if not resolved_model:
-        raise ValueError("A model name must be provided for chat completion.")
-
     resp = llm.chat.completions.create(
-        model=resolved_model,
+        model=model,
         messages=messages,
         # temperature=temperature,
         top_p=top_p,
