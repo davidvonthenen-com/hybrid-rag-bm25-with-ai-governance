@@ -69,10 +69,10 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     p.add_argument("--save-results", type=str, default=None, help="Append JSONL records to this path.")
 
     # Retrieval knobs
-    p.add_argument("--top-k", type=int, default=10, help="Total evidence chunks budget.")
+    p.add_argument("--top-k", type=int, default=20, help="Total evidence chunks budget.")
     p.add_argument("--bm25-k", type=int, default=None, help="BM25 chunk budget (default ~60% of top-k).")
     p.add_argument("--vec-k", type=int, default=None, help="Vector chunk budget (default remainder).")
-    p.add_argument("--bm25-doc-k", type=int, default=5, help="Doc-level BM25 anchors to fetch.")
+    p.add_argument("--bm25-doc-k", type=int, default=10, help="Doc-level BM25 anchors to fetch.")
     p.add_argument("--neighbor-window", type=int, default=0, help="Add ±N adjacent chunks around BM25 hits.")
     p.add_argument("--vec-filter", choices=["anchor", "none"], default="anchor",
                    help="Filter vector search to BM25-anchored docs when possible.")
