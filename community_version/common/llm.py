@@ -197,8 +197,10 @@ def _allowed_citation_tags(hits: List[RetrievalHit]) -> List[str]:
     return out
 
 
-def build_grounding_prompt(question: str, bm25_hits: List[RetrievalHit]) -> List[Dict[str, str]]:
-    # print("***** Building grounding prompt...")
+def build_grounding_prompt(question: str, bm25_hits: List[RetrievalHit], observability: Optional[bool] = False) -> List[Dict[str, str]]:
+    if observability: 
+        LOGGER.info("Building grounding prompt with %d BM25 hits", len(bm25_hits))
+
     context = _format_hits(bm25_hits, title="BM25 Grounding Evidence (authoritative facts)")
     allowed = " ".join(_allowed_citation_tags(bm25_hits)) if bm25_hits else "(none)"
     system = (
@@ -209,7 +211,7 @@ def build_grounding_prompt(question: str, bm25_hits: List[RetrievalHit]) -> List
         f"- Allowed citation tags: {allowed}\n"
         "- After EVERY sentence that contains a factual claim, append one or more citation tags.\n"
         "- Only cite BM25 the opening tag only (e.g., [B1]). Never use closing tags like [/B1] in your answer.\n"
-        "- Never invent citation numbers or use tags not listed above.\n"
+        "- Don't mention the term BM25 in the answer.\n"
         "\n"
         "If the evidence does not support the answer, write exactly: I don't know based on the provided evidence.\n"
         "Do not quote the evidence headers/metadata.\n"
@@ -220,15 +222,18 @@ def build_grounding_prompt(question: str, bm25_hits: List[RetrievalHit]) -> List
 
     prompt_details = [{"role": "system", "content": system}, {"role": "user", "content": user}]
 
-    print("=====================================================")
-    print(_messages_to_prompt(prompt_details))
-    print("=====================================================")
+    if observability:
+        LOGGER.info("=====================================================")
+        LOGGER.info(_messages_to_prompt(prompt_details))
+        LOGGER.info("=====================================================")
 
     return prompt_details
 
 
-def build_vector_only_prompt(question: str, vec_hits: List[RetrievalHit]) -> List[Dict[str, str]]:
-    # print("***** Building vector-only prompt...")
+def build_vector_only_prompt(question: str, vec_hits: List[RetrievalHit], observability: Optional[bool] = False) -> List[Dict[str, str]]:
+    if observability:
+        LOGGER.info("Building vector-only prompt with %d vector hits", len(vec_hits))
+
     context = _format_hits(vec_hits, title="Vector Evidence (semantic fallback)")
     allowed = " ".join(_allowed_citation_tags(vec_hits)) if vec_hits else "(none)"
     system = (
@@ -248,15 +253,18 @@ def build_vector_only_prompt(question: str, vec_hits: List[RetrievalHit]) -> Lis
     user = f"QUESTION:\n{question}\n\nEVIDENCE:\n{context}\n"
     prompt_details = [{"role": "system", "content": system}, {"role": "user", "content": user}]
 
-    print("=====================================================")
-    print(_messages_to_prompt(prompt_details))
-    print("=====================================================")
+    if observability:
+        LOGGER.info("=====================================================")
+        LOGGER.info(_messages_to_prompt(prompt_details))
+        LOGGER.info("=====================================================")
 
     return prompt_details
 
 
-def build_refine_prompt(question: str, grounded_draft: str, vec_hits: List[RetrievalHit]) -> List[Dict[str, str]]:
-    # print("***** Building refine prompt...")
+def build_refine_prompt(question: str, grounded_draft: str, vec_hits: List[RetrievalHit], observability: Optional[bool] = False) -> List[Dict[str, str]]:
+    if observability:
+        LOGGER.info("Building refine prompt with %d vector hits", len(vec_hits))
+
     vec_context = _format_hits(vec_hits, title="Vector Semantic Context (phrasing/terminology support)")
     allowed_v = " ".join(_allowed_citation_tags(vec_hits)) if vec_hits else "(none)"
     system = (
@@ -269,6 +277,7 @@ def build_refine_prompt(question: str, grounded_draft: str, vec_hits: List[Retri
         "\n"
         "VECTOR CITATIONS (optional):\n"
         f"- Allowed vector citation tags: {allowed_v}\n"
+        f"- Don't mention the word vector or vectors in the answer.\n"
         "- Only cite vector opening tag only (e.g., [V1]). Never use closing tags like [/V1] in your answer.\n"
         "\n"
         "Output ONLY the rewritten answer text.\n"
@@ -281,9 +290,10 @@ def build_refine_prompt(question: str, grounded_draft: str, vec_hits: List[Retri
     )
     prompt_details = [{"role": "system", "content": system}, {"role": "user", "content": user}]
 
-    print("=====================================================")
-    print(_messages_to_prompt(prompt_details))
-    print("=====================================================")
+    if observability:
+        LOGGER.info("=====================================================")
+        LOGGER.info(_messages_to_prompt(prompt_details))
+        LOGGER.info("=====================================================")
 
     return prompt_details
 

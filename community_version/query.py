@@ -41,7 +41,7 @@ from common.llm import (
 from common.logging import get_logger
 from common.models import RetrievalHit
 from common.named_entity import extract_entities
-from common.opensearch_client import create_long_client, create_vector_client, MyOpenSearch
+from common.opensearch_client import create_hot_client, create_long_client, create_vector_client, MyOpenSearch
 
 LOGGER = get_logger(__name__)
 
@@ -130,7 +130,8 @@ def _extract_citations(answer: str) -> List[str]:
 def run_one(
     question: str,
     *,
-    bm25_client: MyOpenSearch,
+    bm25_hot_client: MyOpenSearch,
+    bm25_long_client: MyOpenSearch,
     vec_client: MyOpenSearch,
     llm: OpenAI,
     args: argparse.Namespace,
@@ -141,11 +142,11 @@ def run_one(
 
     # Indices
     bm25_full_index = settings.opensearch_full_index
-    # TODO: need to deal with HOT INDEX or getattr(bm25_client.settings, "opensearch_hot_index", None)
-    bm25_chunk_index = settings.opensearch_long_index
+    bm25_hot_chunk_index = settings.opensearch_hot_index
+    bm25_long_chunk_index = settings.opensearch_long_index
     vec_index = settings.opensearch_vector_index
 
-    if not bm25_full_index or not bm25_chunk_index or not vec_index:
+    if not bm25_full_index or not bm25_long_chunk_index or not vec_index:
         raise RuntimeError("Could not resolve required index names (full, chunk, vector). Check settings/CLI overrides.")
 
     # Budget split
@@ -157,7 +158,7 @@ def run_one(
 
     # 1) doc anchors
     anchor_paths, bm25_doc_query, bm25_doc_raw = bm25_retrieve_doc_anchors(
-        bm25_client,
+        bm25_long_client,
         bm25_full_index,
         question=question,
         entities=entities,
@@ -165,10 +166,10 @@ def run_one(
         observability=args.observability,
     )
 
-    # 2A) bm25 LONG INDEX chunks
-    bm25_hits, bm25_chunk_query, bm25_chunk_raw = bm25_retrieve_chunks(
-        bm25_client,
-        bm25_chunk_index,
+    # 2A) bm25 HOT INDEX chunks
+    bm25_hot_hits, bm25_hot_chunk_query, bm25_hot_chunk_raw = bm25_retrieve_chunks(
+        bm25_hot_client,
+        bm25_hot_chunk_index,
         question=question,
         entities=entities,
         k=bm25_k,
@@ -177,8 +178,29 @@ def run_one(
         observability=args.observability,
     )
 
-    # 2B) bm25 HOT INDEX which contains users' personal data
-    # TODO: implement later. if we implement this, we should obtain the bm25 LONG INDEX, bm25 HOT INDEX, and vector chunks in parallel.
+    # 2B) bm25 LONG INDEX which contains users' personal data
+    bm25_long_hits, bm25_long_chunk_query, bm25_long_chunk_raw = bm25_retrieve_chunks(
+        bm25_long_client,
+        bm25_long_chunk_index,
+        question=question,
+        entities=entities,
+        k=bm25_k,
+        anchor_paths=anchor_paths if anchor_paths else None,
+        neighbor_window=int(args.neighbor_window),
+        observability=args.observability,
+    )
+
+    # Combine BM25 hits from both indices, deduplicating
+    seen_bm25: set[Tuple[str, int]] = set()
+    combined_bm25_hits: List[RetrievalHit] = []
+    for h in bm25_hot_hits + bm25_long_hits:
+        key = (h.path, h.chunk_index)
+        if key in seen_bm25:
+            continue
+        combined_bm25_hits.append(h)
+        seen_bm25.add(key)
+        if len(combined_bm25_hits) >= bm25_k:
+            break
 
     # 3) vector chunks
     vec_anchor_paths: Optional[List[str]] = None
@@ -227,8 +249,11 @@ def run_one(
         print(f"\n[ANCHORS] {len(anchor_paths)}")
         for pth in anchor_paths[:10]:
             print("  -", pth)
-        print(f"\n[BM25_HITS] {len(bm25_hits)}")
-        for h in bm25_hits[: min(10, len(bm25_hits))]:
+        print(f"\n[BM25_HOT_HITS] {len(bm25_hot_hits)}")
+        for h in bm25_hot_hits[: min(10, len(bm25_hot_hits))]:
+            print(f"  {h.handle} score={h.score:.3f} chunk={h.chunk_index} path={h.path}")
+        print(f"\n[BM25_LONG_HITS] {len(bm25_long_hits)}")
+        for h in bm25_long_hits[: min(10, len(bm25_long_hits))]:
             print(f"  {h.handle} score={h.score:.3f} chunk={h.chunk_index} path={h.path}")
         print(f"\n[VEC_HITS] {len(vec_hits)} filter={'ON' if vec_anchor_paths else 'OFF'}")
         for h in vec_hits[: min(10, len(vec_hits))]:
@@ -241,17 +266,17 @@ def run_one(
     top_p = float(args.top_p)
 
     grounded_draft: Optional[str] = None
-    if bm25_hits:
-        msgs_a = build_grounding_prompt(question, bm25_hits=bm25_hits)
+    if seen_bm25:
+        msgs_a = build_grounding_prompt(question, bm25_hits=combined_bm25_hits, observability=args.observability)
     else:
         # no BM25 evidence, use vector-only evidence (still citation-restricted)
-        msgs_a = build_vector_only_prompt(question, vec_hits=vec_hits)
+        msgs_a = build_vector_only_prompt(question, vec_hits=vec_hits, observability=args.observability)
 
     # ground the initial draft in BM25 (or vector-only) evidence
     grounded_draft = call_llm_chat(llm, messages=msgs_a, model=model, temperature=temperature, top_p=top_p, max_tokens=max_tokens)
 
-    if bm25_hits and vec_hits:
-        msgs_b = build_refine_prompt(question, grounded_draft=grounded_draft, vec_hits=vec_hits)
+    if seen_bm25 and vec_hits:
+        msgs_b = build_refine_prompt(question, grounded_draft=grounded_draft, vec_hits=vec_hits, observability=args.observability)
         answer = call_llm_chat(llm, messages=msgs_b, model=model, temperature=temperature, top_p=top_p, max_tokens=max_tokens)
     else:
         answer = grounded_draft
@@ -263,13 +288,15 @@ def run_one(
         "entities": entities,
         "indices": {
             "bm25_full": bm25_full_index,
-            "bm25_chunks": bm25_chunk_index,
+            "bm25_hot_chunks": bm25_hot_chunk_index,
+            "bm25_long_chunks": bm25_long_chunk_index,
             "vector_chunks": vec_index,
         },
         "retrieval": {
             "anchor_paths": anchor_paths,
             "bm25_doc_query": bm25_doc_query,
-            "bm25_chunk_query": bm25_chunk_query,
+            "bm25_hot_chunk_query": bm25_hot_chunk_query,
+            "bm25_long_chunk_query": bm25_long_chunk_query,
             "vector_query": vec_query,
             "bm25_doc_hits": [
                 {
@@ -279,7 +306,8 @@ def run_one(
                 }
                 for h in bm25_doc_raw
             ],
-            "bm25_hits": [h.to_jsonable() for h in bm25_hits],
+            "bm25_long_hits": [h.to_jsonable() for h in bm25_long_hits],
+            "bm25_hot_hits": [h.to_jsonable() for h in bm25_hot_hits],
             "vector_hits": [h.to_jsonable() for h in vec_hits],
         },
         "generation": {
@@ -306,7 +334,8 @@ def run_queries(
     *,
     args: argparse.Namespace,
 ) -> None:
-    bm25_client, _ = create_long_client()
+    bm25_hot_client, _ = create_hot_client()
+    bm25_long_client, _ = create_long_client()
     vec_client, _ = create_vector_client()
     llm = load_llm()
 
@@ -318,7 +347,8 @@ def run_queries(
         start = time.time()
         answer, audit = run_one(
             question,
-            bm25_client=bm25_client,
+            bm25_hot_client=bm25_hot_client,
+            bm25_long_client=bm25_long_client,
             vec_client=vec_client,
             llm=llm,
             args=args,

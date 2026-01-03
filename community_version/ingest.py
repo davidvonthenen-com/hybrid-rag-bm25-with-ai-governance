@@ -18,7 +18,7 @@ from typing import Dict, Iterable, List, Sequence
 from tqdm import tqdm
 from opensearchpy import OpenSearch
 
-from common.opensearch_client import create_long_client, create_vector_client
+from common.opensearch_client import create_hot_client, create_long_client, create_vector_client
 from common.named_entity import post_ner, normalize_entities
 from common.embeddings import EmbeddingModel, to_list
 from common.logging import get_logger
@@ -304,11 +304,24 @@ def ingest_hybrid(
     vector_chunk_overlap: int,
 ) -> None:
     # 1) Connect BM25 cluster (LONG) and create indices
-    bm25_client, _ = create_long_client()
-    ensure_bm25_index(bm25_client, bm25_client.settings.opensearch_hot_index)
+    bm25_hot_client, _ = create_hot_client()
+    bm25_long_client, _ = create_long_client()
+
+    ensure_bm25_index(bm25_hot_client, bm25_hot_client.settings.opensearch_hot_index)
     ensure_bm25_index(
-        bm25_client,
-        bm25_client.settings.opensearch_long_index,
+        bm25_hot_client,
+        bm25_hot_client.settings.opensearch_hot_index,
+        extra_properties={
+            "chunk_index": {"type": "integer"},
+            "chunk_count": {"type": "integer"},
+            "parent_filepath": {"type": "keyword"},
+        },
+    )
+
+    ensure_bm25_index(bm25_long_client, bm25_long_client.settings.opensearch_long_index)
+    ensure_bm25_index(
+        bm25_long_client,
+        bm25_long_client.settings.opensearch_long_index,
         extra_properties={
             "chunk_index": {"type": "integer"},
             "chunk_count": {"type": "integer"},
@@ -339,13 +352,16 @@ def ingest_hybrid(
                 "ingested_at_ms": now_ms,
                 "doc_version": now_ms,
             }
-            bm25_client.index(
-                index=bm25_client.settings.opensearch_full_index,
+
+            # full document into BM25 full index
+            bm25_long_client.index(
+                index=bm25_long_client.settings.opensearch_full_index,
                 id=rel_path,
                 body=full_doc,
                 refresh=False,
             )
 
+            # paragraph chunks into BM25 chunk index
             paragraphs = split_into_paragraphs(text)
             chunk_docs = _build_chunk_documents(
                 paragraphs,
@@ -357,14 +373,15 @@ def ingest_hybrid(
 
             for chunk_doc in chunk_docs:
                 chunk_id = f"{rel_path}::chunk-{int(chunk_doc['chunk_index']):03d}"
-                bm25_client.index(
-                    index=bm25_client.settings.opensearch_long_index,
+                bm25_long_client.index(
+                    index=bm25_long_client.settings.opensearch_long_index,
                     id=chunk_id,
                     body=chunk_doc,
                     refresh=False,
                 )
                 stats.bm25_chunks += 1
 
+            # paragraph chunks into vector index
             vector_text_chunks = build_vector_chunks(
                 paragraphs,
                 chunk_size=vector_chunk_size,
@@ -413,8 +430,8 @@ def ingest_hybrid(
     finally:
         progress.close()
 
-    bm25_client.indices.refresh(index=bm25_client.settings.opensearch_full_index)
-    bm25_client.indices.refresh(index=bm25_client.settings.opensearch_long_index)
+    bm25_long_client.indices.refresh(index=bm25_long_client.settings.opensearch_full_index)
+    bm25_long_client.indices.refresh(index=bm25_long_client.settings.opensearch_long_index)
     vec_client.indices.refresh(index=vec_client.settings.opensearch_vector_index)
 
     LOGGER.info(
@@ -423,8 +440,8 @@ def ingest_hybrid(
         stats.docs,
         stats.bm25_chunks,
         stats.vector_chunks,
-        bm25_client.settings.opensearch_full_index,
-        bm25_client.settings.opensearch_long_index,
+        bm25_long_client.settings.opensearch_full_index,
+        bm25_long_client.settings.opensearch_long_index,
         vec_client.settings.opensearch_vector_index,
     )
 

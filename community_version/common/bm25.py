@@ -7,6 +7,8 @@ from typing import Any, Dict, List, Optional, Tuple
 import bm25s
 from opensearchpy.exceptions import NotFoundError
 
+from .opensearch_client import MyOpenSearch
+
 try:
     import Stemmer  # type: ignore
 except ImportError:  # pragma: no cover - optional dependency
@@ -213,7 +215,7 @@ def _build_bm25_chunk_query(
 
 
 def bm25_retrieve_doc_anchors(
-    bm25_client: Any,
+    bm25_client: MyOpenSearch,
     index: str,
     *,
     question: str,
@@ -247,7 +249,7 @@ def bm25_retrieve_doc_anchors(
 
 
 def bm25_retrieve_chunks(
-    bm25_client: Any,
+    bm25_client: MyOpenSearch,
     index: str,
     *,
     question: str,
