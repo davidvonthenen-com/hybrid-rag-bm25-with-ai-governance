@@ -1,12 +1,12 @@
-# Document RAG: Enterprise Version
+# Hybrid RAG: Enterprise Version
 
 Retrieval-Augmented Generation (RAG) has become a critical pattern for grounding Large Language Model (LLM) responses in real-world data, improving both accuracy and reliability. Yet, conventional RAG implementations often default to vector-only databases, which come with drawbacks: weaker precision for exact facts, opaque ranking logic, and challenges with regulatory compliance.
 
-![Enterprise Document RAG](./images/enterprise_version.png)
+![Enterprise Hybrid RAG](./images/enterprise_version.png)
 
 In contrast, this enterprise architecture uses a **Hybrid RAG** design that blends **BM25 lexical search** for deterministic factual grounding with **vector embeddings** for semantic context. It delivers the precision and explainability often attributed to graph-based approaches **without using a graph database**—BM25 replaces graph traversal for grounding, and vectors provide semantic context. By combining explicit term matching with semantic similarity, the system produces retrievals that are observable, reproducible, and audit-ready—without sacrificing the nuance needed for ambiguous or paraphrased queries.
 
-## Key Benefits of Document-based Hybrid RAG
+## Key Benefits of Hybrid RAG (Using BM25 + Vector)
 
 * **Transparency and Explainability**: BM25 matches are traceable through explicit queries, field names, and highlights—no hidden embedding-only ranking.
 * **Semantic Coverage without Drift**: Vector context augments lexical grounding, expanding coverage while keeping factual anchors intact.
@@ -177,4 +177,4 @@ NetApp technologies elevate the Hybrid RAG stack into an enterprise-grade platfo
 4. **Tune the thresholds.** Adjust `α` (relative scoring cutoff), `TTL_MINUTES` (eviction window), `REINDEX_REQUESTS_PER_SECOND`, and optional `PROMOTE_WINDOW_SECONDS` until behavior matches your domain.
 5. **Share lessons.** File issues, submit pull requests, or post a case study. This guide improves with community input and enterprise feedback.
 
-Hybrid Document RAG isn't a prototype—it's running code with governance baked in. Bring it into your stack and start building AI you can trust.
+Hybrid RAG isn't a prototype—it's running code with governance baked in. Bring it into your stack and start building AI you can trust.

@@ -43,7 +43,7 @@ At a high level, the Hybrid RAG architecture consists of three main components:
 
 3. **Integration Layer (Middleware)**: Connects the LLM and OpenSearch. For each question it calls the external NER API, builds an **auditable BM25 query**, and **queries LT and HOT in parallel**. It also runs a **vector kNN search** against the embedding index, filtered to BM25 anchors when available. The middleware then prepares LLM prompts that keep BM25 as the authoritative evidence and vectors as optional semantic support.
 
-![Generic Document RAG Implementation](./images/reinforcement_learning.png)
+![Generic Hybrid RAG Implementation](./images/reinforcement_learning.png)
 
 In this implementation, OpenSearch is a **document search system**, not a black-box vector store. We rely on fielded BM25 queries, entity-biased matching, and provenance metadata to keep retrieval explainable and deterministic. Vectors augment the system by improving semantic recall, but factual grounding remains lexical-first.
 
@@ -57,7 +57,7 @@ The architecture separates HOT and LT to optimize governance, provenance, and op
 
 * **Long-Term (LT)**: The durable, vetted repository. Documents are ingested with NER enrichments (`explicit_terms`, `explicit_terms_text`) and provenance metadata. **Promotion from HOT → LT occurs only when** (1) there is **enough positive reinforcement** of the data **or** (2) a **trusted human-in-the-loop** has verified the data.
 
-### **Benefits of Document RAG**
+### **Benefits of Hybrid RAG**
 
 Adopting this Hybrid RAG architecture with OpenSearch brings several distinct advantages:
 
