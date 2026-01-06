@@ -1,8 +1,8 @@
-# Document RAG: Open Source Community Version
+# Hybrid RAG: Open Source Community Version
 
-Most "RAG" stacks start with vectors and end with questions from auditors: *why did that snippet surface, which fields mattered, and can we reproduce the response tomorrow?* Document RAG flips the playbook. We begin with **OpenSearch BM25** and an **external NER service** so retrieval is explicit, auditable, and grounded in text and metadata you control—then augment with **dense vector search** where it improves semantic context. This mirrors capabilities produced by [Graph-based RAG and Knowledge Graphs](https://neo4j.com/blog/genai/what-is-graphrag/) but using Document search as the focal point.
+Most "RAG" stacks start with vectors and end with questions from auditors: *why did that snippet surface, which fields mattered, and can we reproduce the response tomorrow?* Hybrid RAG flips the playbook. We begin with **OpenSearch BM25** and an **external NER service** so retrieval is explicit, auditable, and grounded in text and metadata you control—then augment with **dense vector search** where it improves semantic context. This mirrors capabilities produced by [Graph-based RAG and Knowledge Graphs](https://neo4j.com/blog/genai/what-is-graphrag/) but using Document search as the focal point.
 
-![Community Document RAG](./images/community_version.png)
+![Community Hybrid RAG](./images/community_version.png)
 
 **Why lexical-first beats black-box vectors**
 
