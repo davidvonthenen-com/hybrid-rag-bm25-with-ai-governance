@@ -1,8 +1,8 @@
 # Enterprise Implementation for Hybrid RAG with Cache and Reinforcement Learning
 
-This README.md provides an **enterprise-oriented reference implementation** for a Hybrid Retrieval-Augmented Generation (RAG) system. It builds upon the [open-source community version](https://www.google.com/search?q=../community_implementation/README.md) by adding production-grade features: **Kafka Connect** pipelines for automated data sync, a **dual-memory model** backed by high-speed caching ([FlexCache](https://www.netapp.com/data-storage/what-is-flex-cache/)) and durable storage (SnapMirror replication), and a **reinforcement learning loop** that promotes facts via Kafka-triggered events.
+This README.md provides an **enterprise-oriented reference implementation** for a Hybrid Retrieval-Augmented Generation (RAG) system. It builds upon the [open-source community version](./community_version/README.md) by adding production-grade features: **Kafka Connect** pipelines for automated data sync, a **dual-memory model** backed by high-speed caching ([FlexCache](https://www.netapp.com/data-storage/what-is-flex-cache/)) and durable storage ([SnapMirror](https://docs.netapp.com/us-en/ontap/concepts/snapmirror-disaster-recovery-data-transfer-concept.html) replication), and a **reinforcement learning loop** that promotes facts via Kafka-triggered events.
 
-Hybrid RAG explicitly combines **BM25 lexical search** for deterministic precision with **vector embeddings** for semantic context, thereby mitigating the hallucinations of pure vector approaches and the rigidity of keyword-only search. The integration of Apache Kafka's change-data-capture (CDC) ensures seamless synchronization between **HOT (unstable)** and **Long-Term (authoritative)** memory stores. Meanwhile, NetApp [FlexCache](https://www.netapp.com/data-storage/what-is-flex-cache/) ensures the HOT tier resides close to the compute, and [SnapCenter](https://www.google.com/search?q=https://www.netapp.com/data-protection/snapcenter/) provides immutable compliance snapshots. The result is a faster, more transparent, and governable RAG system ready for enterprise workloads.
+Hybrid RAG explicitly combines **BM25 lexical search** for deterministic precision with **vector embeddings** for semantic context, thereby mitigating the hallucinations of pure vector approaches and the rigidity of keyword-only search. The integration of Apache Kafka's change-data-capture (CDC) ensures seamless synchronization between **HOT (unstable)** and **Long-Term (authoritative)** memory stores. Meanwhile, NetApp [FlexCache](https://www.netapp.com/data-storage/what-is-flex-cache/) ensures the HOT tier resides close to the compute, and [SnapCenter](https://www.netapp.com/snapcenter/) provides immutable compliance snapshots. The result is a faster, more transparent, and governable RAG system ready for enterprise workloads.
 
 ## Prerequisites
 
@@ -27,7 +27,7 @@ Hybrid RAG explicitly combines **BM25 lexical search** for deterministic precisi
 
 For example, you can use the following 7-8B parameter models that run locally (CPU-friendly via [llama.cpp](https://github.com/ggerganov/llama.cpp)):
 
-* Alibaba Cloud's **[neural-chat-7B-v3-3-GGUF](https://huggingface.co/bartowski/Qwen2.5-7B-Instruct-1M-GGUF)** - *(tested model)* available on HuggingFace
+* Alibaba Cloud's **[Qwen2.5-7B-Instruct-1M-GGUF](https://huggingface.co/bartowski/Qwen2.5-7B-Instruct-1M-GGUF)** - *(tested model)* available on HuggingFace
 * Intel's **[neural-chat-7B-v3-3-GGUF](https://huggingface.co/TheBloke/neural-chat-7B-v3-3-GGUF)** - available on HuggingFace
 
 ## Setting Up the Environment
