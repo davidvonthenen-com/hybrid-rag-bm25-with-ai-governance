@@ -2,7 +2,7 @@
 
 Most "RAG" stacks start with vectors and end with questions from auditors: *why did that snippet surface, which fields mattered, and can we reproduce the response tomorrow?* Hybrid RAG flips the playbook. We begin with **OpenSearch BM25** and an **external NER service** so retrieval is explicit, auditable, and grounded in text and metadata you control—then augment with **dense vector search** where it improves semantic context. This mirrors capabilities produced by [Graph-based RAG and Knowledge Graphs](https://neo4j.com/blog/genai/what-is-graphrag/) but using Document search as the focal point.
 
-![Community Hybrid RAG](./images/community_version.png)
+![Hybrid RAG with Reinforcement Learning](./images/rag-hybrid-bm25.png)
 
 **Why lexical-first beats black-box vectors**
 

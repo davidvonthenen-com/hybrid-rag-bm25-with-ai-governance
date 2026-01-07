@@ -5,7 +5,7 @@ Welcome to the **Hybrid RAG Guide**: a dual-memory (LT + HOT) Vector + BM25 appr
 * **Community / Open-Source Version**: a self-contained demo you can run on a laptop or in a pure open-source deployment.
 * **Enterprise Version**: a production-grade variant that layers in ingest pipelines, NetApp FlexCache, SnapMirror, and other operational muscle.
 
-![Hybrid RAG with Reinforcement Learning](./images/rag-hybrid-bm25.png)
+![BM25-based Retrieval in Hybrid RAG](./images/data-points-bm25.png)
 
 By storing knowledge as **documents with enriched metadata** (named entities and provenance tags) instead of opaque vectors alone, the agent gains traceability, reduces hallucinations, and meets demanding audit requirements.
 
