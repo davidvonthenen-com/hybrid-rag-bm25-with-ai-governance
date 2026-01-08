@@ -1,6 +1,6 @@
 # Hybrid RAG Using BM25: Better Option for AI Governance
 
-Welcome to the **Hybrid RAG Guide**: a dual-memory (LT + HOT) Vector + BM25 approach to Retrieval-Augmented Generation that delivers answers that are **transparent, deterministic, and governance-ready** by design. The repo houses two fully working paths:
+Welcome to the **Hybrid RAG Guide**: a dual-memory (LT + HOT) Vector + BM25 approach using OpenSearch to Retrieval-Augmented Generation that delivers answers that are **transparent, deterministic, and governance-ready** by design. The repo houses two fully working paths:
 
 * **Community / Open-Source Version**: a self-contained demo you can run on a laptop or in a pure open-source deployment.
 * **Enterprise Version**: a production-grade variant that layers in ingest pipelines, NetApp FlexCache, SnapMirror, and other operational muscle.
@@ -22,7 +22,7 @@ Key objectives include:
 * Make promotion from **HOT → LT** a **controlled event** that happens only when (1) there is **enough positive reinforcement** of the data **or** (2) a **trusted human-in-the-loop** has verified it.
 * Show upgrade paths-from a minimal Python demo to an enterprise pipeline with NetApp enterprise storage.
 
-## Benefits Over Vector-Based RAG
+## Benefits Over Graph-Based Hybrid RAG
 
 While graph-based RAG is often touted for its deep relational mapping, it introduces significant operational friction and technical debt that a lexical-first (BM25 + Vector) Hybrid RAG architecture avoids. By grounding retrieval in explicit term matching and semantic similarity, enterprises achieve superior results with far less complexity:
 
