@@ -1,7 +1,3 @@
-Here is the updated Enterprise implementation document. It focuses exclusively on the storage infrastructure required to transform the Community Version into a production-grade Enterprise solution.
-
----
-
 # Enterprise Deployment: Hybrid RAG with NetApp Storage Integrations
 
 This document outlines the **infrastructure deployment strategy** for the Hybrid RAG system. It assumes the use of the application logic found in the [Community Version](https://www.google.com/search?q=../community_version/README.md) but replaces the standard local storage with NetApp enterprise data services.
@@ -158,19 +154,3 @@ docker run -d \
     opensearchproject/opensearch-dashboards:3.2.0
 
 ```
-
-## Summary of Enterprise Enhancements
-
-| Feature | Community Version | Enterprise (NetApp) Version |
-| --- | --- | --- |
-| **Storage Tiering** | None (Local Disk) | <br>**Auto-tiering** moves inactive knowledge to S3; sequential reads bypass hot tier.
-
- |
-| **Ingest Speed** | Standard Copy | <br>**XCP** enables high-speed migration from Hadoop/NFS.
-
- |
-| **Locality** | Static Local Volume | **FlexCache** dynamically caches working sets near inference nodes. |
-| **Resilience** | None | **MetroCluster** ensures Zero RPO; **SnapMirror** handles DR. |
-| **Isolation** | None | **Storage QoS** prevents ingest from starving query traffic. |
-
-This infrastructure ensures that the Hybrid RAG application behaves predictably at scale, meets strict compliance requirements, and optimizes storage costs automatically.
