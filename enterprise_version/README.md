@@ -10,24 +10,8 @@ While the application logically sees two OpenSearch endpoints, the physical stor
 
 | Logical Tier | Application Role | Physical Storage Configuration | NetApp Technology |
 | --- | --- | --- | --- |
-| **Long-Term Memory** | Authoritative Source of Truth; Read-Heavy; Compliance Required. | **Performance:** High-throughput NFS.<br>
-
-<br>**Cost:** Auto-tiering enabled.<br>
-
-<br>**Protection:** Zero-RPO replication. | **MetroCluster** (HA)<br>
-
-<br>**FabricPool** (Tiering)<br>
-
-<br>**SnapLock** (WORM) |
-| **HOT Memory** | Unstable/Working Set; Mixed Read-Write; Low Latency. | **Performance:** In-memory speed with WAN caching.<br>
-
-<br>**Isolation:** IOPS guarantees.<br>
-
-<br>**Locality:** Data close to GPU. | **FlexCache**<br>
-
-<br>**Storage QoS**<br>
-
-<br>**FlexClone** |
+| **Long-Term Memory** | Authoritative Source of Truth; Read-Heavy; Compliance Required. | **Performance:** High-throughput NFS.<br>**Cost:** Auto-tiering enabled.<br>**Protection:** Zero-RPO replication. | **MetroCluster** (HA)<br>**FabricPool** (Tiering)<br>**SnapLock** (WORM) |
+| **HOT Memory** | Unstable/Working Set; Mixed Read-Write; Low Latency. | **Performance:** In-memory speed with WAN caching.<br>**Isolation:** IOPS guarantees.<br>**Locality:** Data close to GPU. | **FlexCache**<br>**Storage QoS**<br>**FlexClone** |
 
 ## 1. Long-Term Memory Configuration (Authoritative Store)
 
@@ -37,35 +21,23 @@ The Long-Term memory contains the vetted Knowledge Base. As this dataset grows t
 
 We utilize **NetApp Auto-tiering** for the OpenSearch data shards backing the Long-Term instance.
 
-* 
-**Cold Data Movement:** Data blocks not accessed for a configurable period (default 31 days) are automatically moved to a cheaper object storage tier (S3).
+* **Cold Data Movement:** Data blocks that are not accessed for a configurable period (default: 31 days) are automatically moved to a lower-cost object storage tier (S3).
 
+* **Transparent Retrieval:** The application remains unaware of data movement; if the RAG agent retrieves an old fact, it is seamlessly recalled to the hot tier.
 
-* 
-**Transparent Retrieval:** The application remains unaware of data movement; if the RAG agent retrieves an old fact, it is seamlessly recalled to the hot tier.
-
-
-* 
-**Intelligent Caching:** The storage detects large sequential reads (common during OpenSearch segment merging or backups) and allows them to bypass the hot tier, preventing maintenance tasks from evicting active knowledge.
-
-
+* **Intelligent Caching:** The storage detects large sequential reads (common during OpenSearch segment merging or backups) and bypasses the hot tier, preventing maintenance tasks from evicting active knowledge.
 
 ### Ingestion Pipeline (NetApp XCP)
 
 For the initial population of Long-Term memory from legacy data lakes (Hadoop/HDFS or massive NFS shares), standard copy tools are insufficient.
 
-* 
-**High-Throughput Migration:** We utilize **NetApp XCP** to move data from legacy HDFS/NFS silos into the RAG source volume.
+* **High-Throughput Migration:** We utilize **NetApp XCP** to move data from legacy HDFS/NFS silos into the RAG source volume.
 
-
-* 
-**Verification:** XCP performs file verification to ensure the "Source of Truth" in the RAG system matches the source bit-for-bit, a critical requirement for regulated industries.
-
-
+* **Verification:** XCP performs file verification to ensure the "Source of Truth" in the RAG system matches the source bit-for-bit, a critical requirement for regulated industries.
 
 ## 2. HOT Memory Configuration (The Working Set)
 
-The HOT memory handles user-specific context, new unverified facts, and high-frequency queries. It requires extreme low latency and isolation from the heavy I/O of the Long-Term ingest processes.
+The HOT memory handles user-specific context, new unverified facts, and high-frequency queries. It requires extremely low latency and isolation from the heavy I/O of the Long-Term ingest processes.
 
 ### Global Locality (FlexCache)
 
@@ -108,24 +80,24 @@ docker network create opensearch-net
 # Backed by NetApp Volume with Auto-tiering & MetroCluster
 # ---------------------------------------------------------
 docker run -d \
-    --name opensearch-longterm \
+ --name opensearch-longterm \
     --network opensearch-net \
-    -p 9201:9200 -p 9601:9600 \
+ -p 9201:9200 -p 9601:9600 \
     -e "discovery.type=single-node" \
-    -e "DISABLE_SECURITY_PLUGIN=true" \
+ -e "DISABLE_SECURITY_PLUGIN=true" \
     # Map data to the NFS mount point protected by MetroCluster
     -v "/mnt/netapp_longterm_vol/data:/usr/share/opensearch/data" \
     # Map snapshots to a SnapLock compliance volume
     -v "/mnt/netapp_snaplock_vol/snapshots:/mnt/snapshots" \
-    opensearchproject/opensearch:3.2.0
+ opensearchproject/opensearch:3.2.0
 
 # Dashboards (Standard configuration)
 docker run -d \
-    --name opensearch-longterm-dashboards \
+ --name opensearch-longterm-dashboards \
     --network opensearch-net \
-    -p 5601:5601 \
+ -p 5601:5601 \
     -e 'OPENSEARCH_HOSTS=["http://opensearch-longterm:9200"]' \
-    -e 'DISABLE_SECURITY_DASHBOARDS_PLUGIN=true' \
+ -e 'DISABLE_SECURITY_DASHBOARDS_PLUGIN=true' \
     opensearchproject/opensearch-dashboards:3.2.0
 
 # ---------------------------------------------------------
@@ -133,24 +105,24 @@ docker run -d \
 # Backed by FlexCache for high-speed local bursting
 # ---------------------------------------------------------
 docker run -d \
-    --name opensearch-shortterm \
+ --name opensearch-shortterm \
     --network opensearch-net \
-    -p 9202:9200 -p 9602:9600 \
+ -p 9202:9200 -p 9602:9600 \
     -e "discovery.type=single-node" \
-    -e "DISABLE_SECURITY_PLUGIN=true" \
+ -e "DISABLE_SECURITY_PLUGIN=true" \
     # Map data to the FlexCache volume for low-latency access
     -v "/mnt/netapp_flexcache_hot/data:/usr/share/opensearch/data" \
     # FlexClone is used here for instant test/dev copies
     -v "/mnt/netapp_flexcache_hot/snapshots:/mnt/snapshots" \
-    opensearchproject/opensearch:3.2.0
+ opensearchproject/opensearch:3.2.0
 
 # Dashboards (Standard configuration)
 docker run -d \
-    --name opensearch-shortterm-dashboards \
+ --name opensearch-shortterm-dashboards \
     --network opensearch-net \
-    -p 5602:5601 \
+ -p 5602:5601 \
     -e 'OPENSEARCH_HOSTS=["http://opensearch-shortterm:9200"]' \
-    -e 'DISABLE_SECURITY_DASHBOARDS_PLUGIN=true' \
+ -e 'DISABLE_SECURITY_DASHBOARDS_PLUGIN=true' \
     opensearchproject/opensearch-dashboards:3.2.0
 
 ```
