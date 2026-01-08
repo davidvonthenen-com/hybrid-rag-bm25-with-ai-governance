@@ -290,13 +290,13 @@ Across audiences, the benefits are consistent: **explainability, determinism, an
 
 ## **7. Implementation Guide**
 
-Please see [GitHub repository](https://github.com/davidvonthenen/docuemnt-rag-guide) for:
+Please see [GitHub repository](https://github.com/NetApp/docuemnt-rag-guide) for:
 
-- [Community / Open Source Implementation](./OSS_Community_Implementation.md)
- For a reference implementation, please check out the following: [community_implementation/README.md](./community_implementation/README.md)
+- [Community / Open Source Version](./OSS_Community_Version.md)
+ For a reference implementation, please check out the following: [community_version/README.md](./community_version/README.md)
 
-- [Enterprise Implementation](./Enterprise_Implementation.md)
- For a reference implementation, please check out the following: [enterprise_implementation/README.md](./enterprise_implementation/README.md)
+- [Enterprise Version](./Enterprise_Version.md)
+ For a reference implementation, please check out the following: [enterprise_version/README.md](./enterprise_version/README.md)
 
 ## **8. Conclusion**
 

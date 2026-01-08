@@ -16,12 +16,12 @@ In contrast, this enterprise architecture uses a **Hybrid RAG** design that blen
 
 ## Dual-Memory Architecture
 
-The enterprise Hybrid RAG agent uses a **HOT (unstable) + long-term store** design. To meet enterprise SLAs, we map these logical tiers to specific NetApp storage capabilities that guarantee isolation and performance:
+The enterprise Hybrid RAG agent uses a **HOT (unstable) + Long-Term store** design. To meet enterprise SLAs, we map these logical tiers to specific NetApp storage capabilities that guarantee isolation and performance:
 
 | Memory Type | Infrastructure | NetApp Augmentation | Data Stored | Purpose |
 | --- | --- | --- | --- | --- |
-| **Long-term Memory** | Persistent OpenSearch index | **MetroCluster** (Zero RPO), **FlexClone** (Testing) | Curated, validated documents with BM25 + vector fields | Authoritative knowledge base; compliance-ready |
-| **HOT (unstable)** | High-performance OpenSearch node | **Storage QoS** (Priority), **SnapCenter** (Recovery) | User-specific, unvetted facts and short-lived uploads | Governance boundary, per-user isolation, retention variations |
+| **Long-term Memory** | Persistent OpenSearch index | **MetroCluster** (HA)<br><br>**FabricPool** (Tiering)<br><br>**SnapLock** (WORM) | Curated, validated documents with BM25 + vector fields | Authoritative knowledge base; compliance-ready |
+| **HOT (unstable)** | High-performance OpenSearch node | **FlexCache**<br><br>**Storage QoS**<br><br>**FlexClone** | User-specific, unvetted facts and short-lived uploads | Governance boundary, per-user isolation, retention variations |
 
 ## Business Impact
 
@@ -149,7 +149,7 @@ In short: **filtered reindex + TTL eviction** gives speed-through-isolation and 
 
 ## 4. Implementation Guide
 
-For a reference, please check out the following: [enterprise_version/README.md](https://www.google.com/search?q=./enterprise_version/README.md)
+For a reference, please check out the following: [enterprise_version/README.md](./enterprise_version/README.md)
 
 # 5. Conclusion
 

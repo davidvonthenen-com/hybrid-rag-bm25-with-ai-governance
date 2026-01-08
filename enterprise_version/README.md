@@ -1,6 +1,6 @@
 # Enterprise Deployment: Hybrid RAG with NetApp Storage Integrations
 
-This document outlines the **infrastructure deployment strategy** for the Hybrid RAG system. It assumes the use of the application logic found in the [Community Version](https://www.google.com/search?q=../community_version/README.md) but replaces the standard local storage with NetApp enterprise data services.
+This document outlines the **infrastructure deployment strategy** for the Hybrid RAG system. It assumes the use of the application logic found in the [Community Version](../community_version/README.md) but replaces the standard local storage with NetApp enterprise data services.
 
 By decoupling the compute (OpenSearch/LLM) from the storage layer, we achieve strict Service Level Agreements (SLAs), distinct hardware QoS for "HOT" vs. "Long-Term" memory, and automated compliance governance—without changing the core application code.
 
@@ -10,8 +10,8 @@ While the application logically sees two OpenSearch endpoints, the physical stor
 
 | Logical Tier | Application Role | Physical Storage Configuration | NetApp Technology |
 | --- | --- | --- | --- |
-| **Long-Term Memory** | Authoritative Source of Truth; Read-Heavy; Compliance Required. | **Performance:** High-throughput NFS.<br>**Cost:** Auto-tiering enabled.<br>**Protection:** Zero-RPO replication. | **MetroCluster** (HA)<br>**FabricPool** (Tiering)<br>**SnapLock** (WORM) |
-| **HOT Memory** | Unstable/Working Set; Mixed Read-Write; Low Latency. | **Performance:** In-memory speed with WAN caching.<br>**Isolation:** IOPS guarantees.<br>**Locality:** Data close to GPU. | **FlexCache**<br>**Storage QoS**<br>**FlexClone** |
+| **Long-Term Memory** | Authoritative Source of Truth; Read-Heavy; Compliance Required. | **Performance:** High-throughput NFS.<br><br>**Cost:** Auto-tiering enabled.<br><br>**Protection:** Zero-RPO replication. | **MetroCluster** (HA)<br><br>**FabricPool** (Tiering)<br><br>**SnapLock** (WORM) |
+| **HOT Memory** | Unstable/Working Set; Mixed Read-Write; Low Latency. | **Performance:** In-memory speed with WAN caching.<br><br>**Isolation:** IOPS guarantees. | **FlexCache**<br><br>**Storage QoS**<br><br>**FlexClone** |
 
 ## 1. Long-Term Memory Configuration (Authoritative Store)
 

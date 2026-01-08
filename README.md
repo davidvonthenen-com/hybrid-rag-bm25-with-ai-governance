@@ -5,7 +5,7 @@ Welcome to the **Hybrid RAG Guide**: a dual-memory (LT + HOT) Vector + BM25 appr
 * **Community / Open-Source Version**: a self-contained demo you can run on a laptop or in a pure open-source deployment.
 * **Enterprise Version**: a production-grade variant that layers in ingest pipelines, NetApp FlexCache, SnapMirror, and other operational muscle.
 
-![BM25-based Retrieval in Hybrid RAG](./images/data-points-bm25.png)
+![Hybrid RAG with Reinforcement Learning](./images/rag-hybrid-bm25.png)
 
 By storing knowledge as **documents with enriched metadata** (named entities and provenance tags) instead of opaque vectors alone, the agent gains traceability, reduces hallucinations, and meets demanding audit requirements.
 
@@ -24,14 +24,50 @@ Key objectives include:
 
 ## Benefits Over Vector-Based RAG
 
-Adopting Hybrid RAG addresses several key limitations of traditional RAG agents:
+While graph-based RAG is often touted for its deep relational mapping, it introduces significant operational friction and technical debt that a lexical-first (BM25 + Vector) Hybrid RAG architecture avoids. By grounding retrieval in explicit term matching and semantic similarity, enterprises achieve superior results with far less complexity:
 
-* **Multi-Step Reasoning**: OpenSearch indexing with entity enrichment supports complex, entity-aware queries across related documents.
-* **Bias Mitigation**: Explicit metadata and annotations expose skew and make it easier to correct.
-* **Improved Compliance and Governance**: Provenance fields and auditable clauses enable traceable, regulator-friendly retrieval.
-* **Risk Management**: Deterministic lexical logic and highlights reduce hallucinations and make review straightforward.
+* **Unified Infrastructure Stack:** Hybrid RAG utilizes a single software ecosystem (OpenSearch) for both BM25 lexical search and vector embeddings, whereas graph-based RAG typically requires a fragmented stack involving a dedicated graph database (e.g., Neo4j) alongside a separate vector store.
+* **Elimination of Ontology Overhead:** Graph RAG requires the upfront creation and continuous maintenance of complex ontologies and schemas; in contrast, Hybrid RAG uses deterministic analyzers and entity extraction that adapt to new data without manual relational mapping.
+* **Lower Technical Barrier to Entry:** Implementing BM25 does not require specialized graph theory expertise or "Graph Data Scientists," allowing existing software engineering and DevOps teams to manage the system using standard search engine patterns.
+* **Deterministic Fact Traceability:** Lexical search provides immediate, human-readable evidence of why a document was retrieved through explicit keyword highlighting and field matching—a "glass box" approach compared to the often opaque traversal logic of multi-hop graph queries.
+* **Operational Resilience at Scale:** Managing a graph at petabyte scale often leads to performance bottlenecks during high-concurrency writes; Hybrid RAG leverages mature enterprise storage features like FlexCache and MetroCluster to scale retrieval and protection without the fragility of massive interconnected nodes.
 
-### Community vs Enterprise: What Changes?
+## Benefits Over Vector-Based RAG
+
+While traditional vector-only RAG excels at semantic "vibes," it often struggles with the precision, auditability, and deterministic grounding required by the enterprise. Transitioning to a lexical-first (BM25 + Vector) architecture provides several critical advantages:
+
+* **Deterministic Factual Grounding:** BM25 eliminates the "black box" of vector-only ranking by providing traceable, keyword-based evidence for every retrieval, ensuring exact matches for entities like product IDs or legal clauses.
+* **Audit-Ready Provenance:** By utilizing explicit metadata fields (e.g., doc_version, ingested_at_ms), every fact used to ground an LLM response is tied to a verifiable source of truth, satisfying regulatory requirements for data lineage.
+* **Mitigation of Semantic Drift:** Unlike vector embeddings, which can suffer from "hallucinated similarity" in high-dimensional space, lexical search anchors the retrieval in explicit term frequency, preventing contextually irrelevant documents from polluting the LLM prompt.
+* **Storage-Aware Compliance:** Integrating with NetApp storage allows for immutable SnapCenter snapshots and MetroCluster replication, ensuring that the retrieved context is protected by enterprise-grade disaster recovery and point-in-time audit capabilities.
+* **Operational Explainability:** Use of deterministic analyzers and keyword highlights makes it straightforward for human reviewers to understand exactly why the RAG agent selected a specific snippet, reducing the risk of hidden bias in embedding-only systems.
+
+## Data Relationships
+
+![Comparison: Retrieval in RAG Explained](./images/data-points-bm25.png)
+
+The following analysis breaks down the data relationships and operational characteristics of the three primary retrieval methodologies used in modern RAG systems:
+
+### Vector Embeddings (Approximate Nearest Neighbor)
+
+* **Isolated Data Points:** In this model, data exists as high-dimensional points in a vector space with no explicit, hard-coded relationships between them.
+* **Semantic Proximity:** Relationships are purely mathematical and based on "semantic similarity"—retrieval is determined by the distance between a query vector and document vectors.
+* **Limitations:** Because there are no formal links, this approach often suffers from "semantic drift" or "hallucinated similarity," where the system retrieves contextually irrelevant information that happens to be mathematically nearby.
+
+### Knowledge Graph
+
+* **Explicit Relationships:** This represents the gold standard for relational mapping, where every entity is a node connected by explicit edges (relationships) to other nodes.
+* **Deep Contextual Traversal:** It allows for complex, multi-hop reasoning by following defined paths between data points.
+* **High Operational Burden:** While ideal for precision, graphs are notoriously difficult to manage at enterprise scale, requiring specialized expertise, complex ontology creation, and significant development costs to keep relations updated over time.
+
+### BM25 (Lexical-First Hybrid)
+
+* **The "Middle Ground" Infrastructure:** As shown in the image, BM25 provides structured data relationships without the overhead of a formal graph.
+* **Deterministic Keyword Matching:** It uses deterministic lexical logic to anchor retrieval in specific term frequencies and exact keyword matches.
+* **Efficient Logic Layer:** By using entity enrichment—like the external NER service used in our Hybrid RAG pipeline—we can create simple, auditable relationships between terms and documents.
+* **Optimized for Enterprise Storage:** Unlike fragmented graph databases, BM25 utilizes a unified software stack (OpenSearch) that integrates seamlessly with NetApp features like FlexCache for micro-second local reads and Auto-tiering to move cold shards to S3 automatically.
+
+## Community vs Enterprise: What Changes?
 
 | Capability                 | Community Edition                             | Enterprise Edition                                                          |
 | -------------------------- | --------------------------------------------- | --------------------------------------------------------------------------- |
