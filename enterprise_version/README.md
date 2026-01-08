@@ -2,7 +2,7 @@
 
 This document outlines the **infrastructure deployment strategy** for the Hybrid RAG system. It assumes the use of the application logic found in the [Community Version](../community_version/README.md) but replaces the standard local storage with NetApp enterprise data services.
 
-By decoupling the compute (OpenSearch/LLM) from the storage layer, we achieve strict Service Level Agreements (SLAs), distinct hardware QoS for "HOT" vs. "Long-Term" memory, and automated compliance governance—without changing the core application code.
+By decoupling the compute (OpenSearch/LLM) from the storage layer, we achieve strict Service Level Agreements (SLAs), distinct hardware QoS for "HOT" vs. "Long-Term" memory, and automated compliance governance without changing the core application code.
 
 ## Architecture: The Storage Overlay
 
@@ -124,5 +124,4 @@ docker run -d \
     -e 'OPENSEARCH_HOSTS=["http://opensearch-shortterm:9200"]' \
  -e 'DISABLE_SECURITY_DASHBOARDS_PLUGIN=true' \
     opensearchproject/opensearch-dashboards:3.2.0
-
 ```

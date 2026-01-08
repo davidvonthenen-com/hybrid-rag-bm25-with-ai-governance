@@ -1,12 +1,12 @@
 # Hybrid RAG: Open Source Community Version
 
-Most "RAG" stacks start with vectors and end with questions from auditors: *why did that snippet surface, which fields mattered, and can we reproduce the response tomorrow?* Hybrid RAG flips the playbook. We begin with **OpenSearch BM25** and an **external NER service** so retrieval is explicit, auditable, and grounded in text and metadata you control—then augment with **dense vector search** where it improves semantic context. This mirrors capabilities produced by [Graph-based RAG and Knowledge Graphs](https://neo4j.com/blog/genai/what-is-graphrag/) but using Document search as the focal point.
+Most "RAG" stacks start with vectors and end with questions from auditors: *why did that snippet surface, which fields mattered, and can we reproduce the response tomorrow?* Hybrid RAG flips the playbook. We begin with **OpenSearch BM25** and an **external NER service** so retrieval is explicit, auditable, and grounded in text and metadata you control then augment with **dense vector search** where it improves semantic context. This mirrors capabilities produced by [Graph-based RAG and Knowledge Graphs](https://neo4j.com/blog/genai/what-is-graphrag/) but using Document search as the focal point.
 
 ![Hybrid RAG with Reinforcement Learning](./images/rag-hybrid-bm25.png)
 
 **Why lexical-first beats black-box vectors**
 
-* **Explainability on day one.** We treat entities and keywords as first-class citizens and query them directly. You can point to the exact fields and terms that fired—no hand-waving about "semantic neighbors."
+* **Explainability on day one.** We treat entities and keywords as first-class citizens and query them directly. You can point to the exact fields and terms that fired. No hand-waving about "semantic neighbors."
 * **Deterministic, governable search.** We use explicit **keyword normalizers** on entity fields, default **BM25** scoring, and **highlights** for legibility.
 * **Reduce hallucinations without hiding the ball.** Answers are grounded in retrieved documents, and every claim traces back to source evidence. Vectors are additive context, not the authority.
 
@@ -46,7 +46,7 @@ Promotion is **explicit and outside the query path**: the retrieval code queries
 * **Lower risk, higher signal:** Grounded retrieval reduces fabrication while keeping vectors as a **declared, supporting channel** rather than a hidden default.
 * **Safer generation:** The two-pass LLM design isolates factual grounding from stylistic refinement, which makes audits simpler and mitigates semantic drift.
 
-The sections that follow show how to **ingest** with NER enrichments (stable mappings; NER service **required by default**) plus vector embeddings, **retrieve** with entity-aware BM25 grounding and vector augmentation, and **operate LT ↔ HOT promotion workflows** (outside the query path) with optional TTL/ISM policies—all with observability hooks that make auditors smile.
+The sections that follow show how to **ingest** with NER enrichments (stable mappings; NER service **required by default**) plus vector embeddings, **retrieve** with entity-aware BM25 grounding and vector augmentation, and **operate LT ↔ HOT promotion workflows** (outside the query path) with optional TTL/ISM policies all with observability hooks that make auditors smile.
 
 ## 2. Ingesting Your Data Into Long-Term Memory
 
@@ -141,7 +141,7 @@ There is **no in-index confidence scoring** in the reference implementation.
 
 What we actually track today:
 
-* `hot_promoted_at` (epoch millis) on HOT documents — written during promotion.
+* `hot_promoted_at` (epoch millis) on HOT documents written during promotion.
 * Optional app-level metrics (outside OpenSearch) if you choose to log cache hits or human reviews.
 * Eviction is driven by time (TTL), not by a score.
 
@@ -200,13 +200,13 @@ For a reference, please check out the following: [community_version/README.md](.
 
 ## 5. Conclusion
 
-Document-first RAG gives you more than quick answers—it gives you answers you can **defend**.
+Document-first RAG gives you more than quick answers... it gives you answers you can **defend**.
 
 * **Transparency & explainability** are built-in: explicit fields (`explicit_terms`, `explicit_terms_text`), entity-aware grounding, and **highlights** show *exactly* why a document matched.
 * **Accountability & risk control** improve because retrieval is deterministic (fixed mappings, lowercase normalizer, BM25), semantic context is additive (vector search), and promotion/eviction behavior is configured and reproducible.
 * **Compliance** turns into an operational posture: a durable long-term store, a TTL-governed **HOT** cache keyed by `hot_promoted_at`, and observable promotion/eviction events.
 
-Pair that with the dual-store layout—**HOT (unstable) cache** for today's topics plus **durable long-term memory** for provenance—and you get a system that's **responsive now** and **auditable later**.
+Pair that with the dual-store layout (**HOT (unstable) cache** for today's topics plus **durable long-term memory** for provenance) and you get a system that's **responsive now** and **auditable later**.
 
 ### Your next steps
 
