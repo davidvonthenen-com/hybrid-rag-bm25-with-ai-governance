@@ -29,7 +29,7 @@ While graph-based RAG is often touted for its deep relational mapping, it introd
 * **Unified Infrastructure Stack:** Hybrid RAG utilizes a single software ecosystem (OpenSearch) for both BM25 lexical search and vector embeddings, whereas graph-based RAG typically requires a fragmented stack involving a dedicated graph database (e.g., Neo4j) alongside a separate vector store.
 * **Elimination of Ontology Overhead:** Graph RAG requires the upfront creation and continuous maintenance of complex ontologies and schemas; in contrast, Hybrid RAG uses deterministic analyzers and entity extraction that adapt to new data without manual relational mapping.
 * **Lower Technical Barrier to Entry:** Implementing BM25 does not require specialized graph theory expertise or "Graph Data Scientists," allowing existing software engineering and DevOps teams to manage the system using standard search engine patterns.
-* **Deterministic Fact Traceability:** Lexical search provides immediate, human-readable evidence of why a document was retrieved through explicit keyword highlighting and field matching—a "glass box" approach compared to the often opaque traversal logic of multi-hop graph queries.
+* **Deterministic Fact Traceability:** Lexical search provides immediate, human-readable evidence of why a document was retrieved through explicit keyword highlighting and field matching; a "glass box" approach compared to the often opaque traversal logic of multi-hop graph queries.
 * **Operational Resilience at Scale:** Managing a graph at petabyte scale often leads to performance bottlenecks during high-concurrency writes; Hybrid RAG leverages mature enterprise storage features like FlexCache and MetroCluster to scale retrieval and protection without the fragility of massive interconnected nodes.
 
 ## Benefits Over Vector-Based RAG
@@ -51,7 +51,7 @@ The following analysis breaks down the data relationships and operational charac
 ### Vector Embeddings (Approximate Nearest Neighbor)
 
 * **Isolated Data Points:** In this model, data exists as high-dimensional points in a vector space with no explicit, hard-coded relationships between them.
-* **Semantic Proximity:** Relationships are purely mathematical and based on "semantic similarity"—retrieval is determined by the distance between a query vector and document vectors.
+* **Semantic Proximity:** Relationships are purely mathematical and based on "semantic similarity". Retrieval is determined by the distance between a query vector and document vectors.
 * **Limitations:** Because there are no formal links, this approach often suffers from "semantic drift" or "hallucinated similarity," where the system retrieves contextually irrelevant information that happens to be mathematically nearby.
 
 ### Knowledge Graph
@@ -64,7 +64,7 @@ The following analysis breaks down the data relationships and operational charac
 
 * **The "Middle Ground" Infrastructure:** As shown in the image, BM25 provides structured data relationships without the overhead of a formal graph.
 * **Deterministic Keyword Matching:** It uses deterministic lexical logic to anchor retrieval in specific term frequencies and exact keyword matches.
-* **Efficient Logic Layer:** By using entity enrichment—like the external NER service used in our Hybrid RAG pipeline—we can create simple, auditable relationships between terms and documents.
+* **Efficient Logic Layer:** By using entity enrichment (like the external NER service used in our Hybrid RAG pipeline), we can create simple, auditable relationships between terms and documents.
 * **Optimized for Enterprise Storage:** Unlike fragmented graph databases, BM25 utilizes a unified software stack (OpenSearch) that integrates seamlessly with NetApp features like FlexCache for micro-second local reads and Auto-tiering to move cold shards to S3 automatically.
 
 ## Community vs Enterprise: What Changes?

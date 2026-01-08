@@ -2,7 +2,7 @@
 
 ## **1. Executive Summary**
 
-Most RAG implementations lean on vectors alone or on generic “hybrid” search that blends dense vectors with lexical scoring. Hybrid improves recall and robustness, and a [recent AWS write-up](https://aws.amazon.com/blogs/big-data/hybrid-search-with-amazon-opensearch-service) details how OpenSearch mixes BM25/lexical/full-text with vectors (and even sparse vectors) to boost retrieval quality. That said, hybrid systems often blur why a passage surfaced—semantic similarity scores aren’t human-interpretable, and default lexical setups don’t always make it clear which fields or clauses matched.
+Most RAG implementations lean on vectors alone or on generic "hybrid" search that blends dense vectors with lexical scoring. Hybrid improves recall and robustness, and a [recent AWS write-up](https://aws.amazon.com/blogs/big-data/hybrid-search-with-amazon-opensearch-service) details how OpenSearch mixes BM25/lexical/full-text with vectors (and even sparse vectors) to boost retrieval quality. That said, hybrid systems often blur why a passage surfaced... semantic similarity scores aren't human-interpretable, and default lexical setups don't always make it clear which fields or clauses matched.
 
 This repository implements a **Hybrid RAG** that is intentionally **two-channel**:
 
@@ -18,10 +18,10 @@ From an AI Governance standpoint, this design is superior on four fronts:
 * **Data Governance and Regulatory Compliance**: The dual-store layout is explicit. **HOT (unstable)** holds user-specific or experimental material governed by TTL/rollover policies; **LT** retains vetted knowledge with provenance metadata. This makes retention and access policies enforceable and keeps audited content separate from unverified input.
 * **Risk Management and Safety**: Answers are grounded in retrieved documents and deterministic lexical logic. Vector context is constrained to BM25 anchors, reducing hallucinations and making noise easier to detect.
 
-This approach benefits from recent research that marries symbolic structure with neural retrieval. For example, [HybridRAG (research originating from NVIDIA and Blackrock)](https://arxiv.org/pdf/2408.04948) (not to be confused with [OpenSearch’s hybrid search functionality](https://docs.opensearch.org/latest/vector-search/ai-search/hybrid-search/index/)) shows that explicit entity/relationship extraction feeding a structured store improves precision and evidence quality. This Hybrid RAG implementation mirrors those goals by using entity-aware BM25 for factual grounding and vectors for semantic support.
+This approach benefits from recent research that marries symbolic structure with neural retrieval. For example, [HybridRAG (research originating from NVIDIA and Blackrock)](https://arxiv.org/pdf/2408.04948) (not to be confused with [OpenSearch's hybrid search functionality](https://docs.opensearch.org/latest/vector-search/ai-search/hybrid-search/index/)) shows that explicit entity/relationship extraction feeding a structured store improves precision and evidence quality. This Hybrid RAG implementation mirrors those goals by using entity-aware BM25 for factual grounding and vectors for semantic support.
 
 **Bottom line:**
-Pure vectors maximize fuzzy recall; hybrid (vector+BM25) balances fuzziness with keywords. **This repo goes further by separating the roles**—BM25 provides the evidence, vectors provide the phrasing—so answers stay explainable, reproducible, and governable without sacrificing retrieval quality.
+Pure vectors maximize fuzzy recall; hybrid (vector+BM25) balances fuzziness with keywords. **This repo goes further by separating the roles.** BM25 provides the evidence, vectors provide the phrasing... so answers stay explainable, reproducible, and governable without sacrificing retrieval quality.
 
 > **IMPORTANT NOTE:** This implementation uses OpenSearch with explicit BM25 queries, external NER enrichment, and a dedicated vector index. Searches query **LT and HOT in parallel** for BM25 evidence, then use **vector kNN** for semantic context, typically filtered to BM25-anchored documents. The LLM first drafts a grounded answer from BM25 evidence and then (optionally) refines language using vector context without adding new facts. This preserves determinism and auditability while improving readability.
 
@@ -31,7 +31,7 @@ Pure vectors maximize fuzzy recall; hybrid (vector+BM25) balances fuzziness with
 
 At a high level, the Hybrid RAG architecture consists of three main components:
 
-1. **Large Language Model (LLM)**: Generates responses from retrieved context plus the user’s question, and is constrained to that context.
+1. **Large Language Model (LLM)**: Generates responses from retrieved context plus the user's question, and is constrained to that context.
 
 2. **OpenSearch Knowledge Stores**: Two OpenSearch instances play distinct roles:
 
@@ -47,7 +47,7 @@ At a high level, the Hybrid RAG architecture consists of three main components:
 
 In this implementation, OpenSearch is a **document search system**, not a black-box vector store. We rely on fielded BM25 queries, entity-biased matching, and provenance metadata to keep retrieval explainable and deterministic. Vectors augment the system by improving semantic recall, but factual grounding remains lexical-first.
 
-Overall, the design marries an LLM’s generation with transparent retrieval. You tune behavior by deciding what lives in LT vs HOT, how NER enrichments are stored, and how vector retrieval is constrained. Next, we outline how the two stores work together to strengthen governance.
+Overall, the design marries an LLM's generation with transparent retrieval. You tune behavior by deciding what lives in LT vs HOT, how NER enrichments are stored, and how vector retrieval is constrained. Next, we outline how the two stores work together to strengthen governance.
 
 ### **HOT vs. Long-Term Roles**
 
@@ -78,7 +78,7 @@ Transparency is built in and observable end-to-end:
 * **Explicit Query Logic**: The integration layer issues structured BM25 queries with entity-biased clauses and deterministic field selection.
 * **Audit Trails**: Provenance fields (`filepath`/`URI`, `ingested_at_ms`, `doc_version`) and HOT stamps provide a clear trail from question → entities → per-store retrieval → answer. HOT → LT promotion events are discrete, reviewable steps.
 
-Reasoning is externalized: we can map query → retrieved evidence → answer without relying on opaque similarity scores—useful for regulated domains where reviewers must see and verify the chain of custody.
+Reasoning is externalized: we can map query → retrieved evidence → answer without relying on opaque similarity scores. This is useful for regulated domains where reviewers must see and verify the chain of custody.
 
 ### **Visualizing the Architecture (Referencing Diagram)**
 
@@ -97,7 +97,7 @@ Unlike vector-only RAG, this dual-store, lexical-first design protects provenanc
 
 ### **Overview of HOT**
 
-HOT in this OpenSearch-based RAG system is a **document store**, not a chat transcript. It holds **volatile, user-specific, or experimental data** and, when desired, a **small, materialized subset** of long-term (LT) documents for operational reasons. Relevance for retrieval is driven by an external NER service that extracts entities from the user’s question; the integration layer uses those entities to build **entity-aware BM25** queries and **queries LT and HOT in parallel**. When operators choose to materialize LT content into HOT, each copied document should be stamped with `hot_promoted_at` for later eviction.
+HOT in this OpenSearch-based RAG system is a **document store**, not a chat transcript. It holds **volatile, user-specific, or experimental data** and, when desired, a **small, materialized subset** of long-term (LT) documents for operational reasons. Relevance for retrieval is driven by an external NER service that extracts entities from the user's question; the integration layer uses those entities to build **entity-aware BM25** queries and **queries LT and HOT in parallel**. When operators choose to materialize LT content into HOT, each copied document should be stamped with `hot_promoted_at` for later eviction.
 
 This store is optimized for speed and legibility. Keeping HOT small means BM25 queries run fast and return relevant chunks for inspection. The schema mirrors LT fields (`content`, `category`, `filepath`/`URI`, `explicit_terms`, `explicit_terms_text`, `ingested_at_ms`, `doc_version`) with an extra `hot_promoted_at` to support TTL. HOT is **self-pruning**: a scheduled eviction job deletes items older than a configured window, keeping the store lean and current. LT remains the source of truth.
 
@@ -145,11 +145,11 @@ In essence, HOT is a fast, entity-scoped store that boosts responsiveness while 
 
 ### **Overview of Long-Term Memory**
 
-Long-term memory is the persistent knowledge foundation of the Hybrid RAG architecture. This is where the system’s accumulated information, expected to remain relevant over time, is stored. In practice, long-term memory is one (or more) OpenSearch indices on the **LT** instance. Unlike **HOT (unstable)**, which is ephemeral, long-term memory contains data that doesn’t expire on a timer—it stays until updated or removed deliberately.
+Long-term memory is the persistent knowledge foundation of the Hybrid RAG architecture. This is where the system's accumulated information, expected to remain relevant over time, is stored. In practice, long-term memory is one (or more) OpenSearch indices on the **LT** instance. Unlike **HOT (unstable)**, which is ephemeral, long-term memory contains data that doesn't expire on a timer... it stays until updated or removed deliberately.
 
 Some characteristics of long-term memory:
 
-* **It is comprehensive:** The store covers a wide range of documents (manuals, knowledge articles, books, historical records). For enterprise assistants this can include policies, product docs, FAQs, and industry literature—material that benefits from durable indexing and provenance.
+* **It is comprehensive:** The store covers a wide range of documents (manuals, knowledge articles, books, historical records). For enterprise assistants this can include policies, product docs, FAQs, and industry literature (material that benefits from durable indexing and provenance).
 
 * **It is structured for retrieval:** In this reference implementation we index **whole documents** and **paragraph-level chunks** with deterministic mappings. Each record carries `content` (text), `category` (keyword, lowercase normalizer), `filepath`/`URI` (stable `_id`), `explicit_terms` (keyword, lowercase normalizer), `explicit_terms_text` (text), `ingested_at_ms` (epoch_millis), and `doc_version` (long). This supports precise BM25 retrieval and entity-aware filters. Paragraph chunks are also embedded and stored in a vector index for semantic kNN retrieval.
 
@@ -159,15 +159,15 @@ Some characteristics of long-term memory:
 
 * **It scales technically:** OpenSearch scales horizontally (sharding/replication) and can split by thematic index if needed. As volume grows, LT absorbs millions of documents while keeping mappings stable for deterministic behavior.
 
-* **It evolves with time:** Long-term doesn’t mean static; new material is ingested and older content can be revised or removed. Version fields (`doc_version`) and timestamps (`ingested_at_ms`) support governance and replay.
+* **It evolves with time:** Long-term doesn't mean static; new material is ingested and older content can be revised or removed. Version fields (`doc_version`) and timestamps (`ingested_at_ms`) support governance and replay.
 
-In essence, long-term memory acts as the AI’s body of record. It complements **HOT (unstable)** by providing stability, provenance, and breadth.
+In essence, long-term memory acts as the AI's body of record. It complements **HOT (unstable)** by providing stability, provenance, and breadth.
 
 ### **Integration with HOT**
 
 The interaction between long-term and HOT is what gives the system its power:
 
-* **During Query Processing:** The orchestrator extracts entities from the user’s question (using NER), builds an **auditable BM25 query**, and **queries LT and HOT in parallel**. It then runs **vector kNN** against the embedding index, typically filtered to BM25-anchored documents, and prepares LLM prompts with clear separation between grounding evidence and semantic support.
+* **During Query Processing:** The orchestrator extracts entities from the user's question (using NER), builds an **auditable BM25 query**, and **queries LT and HOT in parallel**. It then runs **vector kNN** against the embedding index, typically filtered to BM25-anchored documents, and prepares LLM prompts with clear separation between grounding evidence and semantic support.
 
 * **Promotion from HOT → LT** occurs **only** when (1) there is **enough positive reinforcement** of the data **or** (2) a **trusted human-in-the-loop** has verified the data. Long-term remains authoritative.
 
@@ -193,13 +193,13 @@ Long-term memory contains most of the data, so scale and steadiness matter:
 
 * **Monitoring and Optimization:** Track latency, heap, and segment counts. Add fields or indices to match query patterns; tune refresh/merge policy based on actual workload.
 
-* **Security and Multitenancy:** Enforce role-based access; validate performance with security enabled. Document- or field-level controls are possible but add overhead—measure before and after.
+* **Security and Multitenancy:** Enforce role-based access; validate performance with security enabled. Document- or field-level controls are possible but add overhead (measure before and after).
 
 Treat the long-term store like a production search service: stable mappings, capacity planning, and steady maintenance.
 
 ## **5. AI Governance Improvements**
 
-Effective AI governance means ensuring that AI systems operate in a manner that is transparent, fair, accountable, and safe, while adhering to relevant laws and ethical standards. The Hybrid RAG architecture we’ve described offers concrete improvements in each of these areas by design. Let’s break down the governance benefits across several key dimensions:
+Effective AI governance means ensuring that AI systems operate in a manner that is transparent, fair, accountable, and safe, while adhering to relevant laws and ethical standards. The Hybrid RAG architecture we've described offers concrete improvements in each of these areas by design. Let's break down the governance benefits across several key dimensions:
 
 ### **Transparency and Explainability**
 
@@ -211,7 +211,7 @@ Fairness starts with curation of the long-term (LT) corpus and visibility into r
 
 ### **Accountability and Responsibility**
 
-Every critical step is loggable in plain terms. The NER API returns detected `entities`. The query orchestrator can emit observability summaries and optional JSONL records (`--save-results`) that include the question, entities, per-store totals, and the filepaths of kept hits—effectively the transaction log. These artifacts trace question → entities → per-store queries → selected context → answer.
+Every critical step is loggable in plain terms. The NER API returns detected `entities`. The query orchestrator can emit observability summaries and optional JSONL records (`--save-results`) that include the question, entities, per-store totals, and the filepaths of kept hits; effectively the transaction log. These artifacts trace question → entities → per-store queries → selected context → answer.
 
 ### **Data Governance**
 
@@ -219,13 +219,13 @@ Lifecycle control is built in. LT is durable and versioned; **HOT** is ephemeral
 
 ### **Regulatory Compliance and Standards**
 
-This design supports rights and controls that regulators care about. Source traceability and fielded queries enable evidence production; precise deletes against LT handle erasure requests; HOT TTL prevents transient copies from lingering. Access control and residency are enforced at the OpenSearch layer and can be audited alongside search activity. Snapshots taken on LT provide point-in-time attestations of “what the system knew.”
+This design supports rights and controls that regulators care about. Source traceability and fielded queries enable evidence production; precise deletes against LT handle erasure requests; HOT TTL prevents transient copies from lingering. Access control and residency are enforced at the OpenSearch layer and can be audited alongside search activity. Snapshots taken on LT provide point-in-time attestations of "what the system knew."
 
 ### **Risk Management and Safety**
 
-Grounded, fielded retrieval reduces hallucinations. BM25 evidence is the factual anchor, and vector context is constrained to that evidence whenever possible. HOT’s TTL curbs stale context. When issues occur, audit artifacts (entity extraction logs, saved JSONL, and OpenSearch traces) speed root-cause analysis and rollback.
+Grounded, fielded retrieval reduces hallucinations. BM25 evidence is the factual anchor, and vector context is constrained to that evidence whenever possible. HOT's TTL curbs stale context. When issues occur, audit artifacts (entity extraction logs, saved JSONL, and OpenSearch traces) speed root-cause analysis and rollback.
 
-Hybrid Search for AI governance takes the mystery out of the machine. Two OpenSearch instances exist primarily for **governance boundaries and retention variations control**, not for latency wins—so performance and responsibility move forward together.
+Hybrid Search for AI governance takes the mystery out of the machine. Two OpenSearch instances exist primarily for **governance boundaries and retention variations control**, not for latency wins... so performance and responsibility move forward together.
 
 ## **6. Target Audience and Use Cases**
 
@@ -286,7 +286,7 @@ The pattern stays the same; only the corpus and NER/BM25/vector implementation c
 * **Legal & Regulatory**
   Statutes, rulings, and memos are ingested into **LT** with stable IDs. Fielded, explainable matches power counsel workflows; any HOT presence is operational (materialized windows), not a hidden data path.
 
-Across audiences, the benefits are consistent: **explainability, determinism, and operational control**. The dual-store design proves where answers came from, separates durable truth from volatile experiments, and turns policy enforcement into configuration—while keeping the request path fast and observable.
+Across audiences, the benefits are consistent: **explainability, determinism, and operational control**. The dual-store design proves where answers came from, separates durable truth from volatile experiments, and turns policy enforcement into configuration while keeping the request path fast and observable.
 
 ## **7. Implementation Guide**
 
@@ -300,10 +300,10 @@ Please see [GitHub repository](https://github.com/NetApp/docuemnt-rag-guide) for
 
 ## **8. Conclusion**
 
-The Hybrid RAG architecture moves AI retrieval from opaque heuristics to **observable, governable search**. Pairing a Large Language Model with **BM25-grounded retrieval** and **vector semantic augmentation** blends generation with verifiable evidence. Queries run against **both Long-Term (LT) and HOT (unstable)** in parallel, BM25 evidence is gathered from both stores, and vector context is added in a controlled, anchored way—maintaining reliability, transparency, and compliance that end-to-end training or vector-only stacks can’t match.
+The Hybrid RAG architecture moves AI retrieval from opaque heuristics to **observable, governable search**. Pairing a Large Language Model with **BM25-grounded retrieval** and **vector semantic augmentation** blends generation with verifiable evidence. Queries run against **both Long-Term (LT) and HOT (unstable)** in parallel, BM25 evidence is gathered from both stores, and vector context is added in a controlled, anchored way... maintaining reliability, transparency, and compliance that end-to-end training or vector-only stacks can't match.
 
 Knowledge is treated as a first-class asset. **LT** is the vetted, durable store with deterministic mappings (`explicit_terms`, provenance fields, versions). **HOT (unstable)** is an operational, entity-scoped store governed by TTL. **HOT → LT promotion happens only** when there is sufficient **positive reinforcement** of the data **or** a **trusted human-in-the-loop** has verified it.
 
-Transparency is built in. Answers are grounded in retrievable documents with **explicit evidence blocks** and auditable query branches. The orchestrator’s observability controls (per-store totals, kept filepaths, and optional compact JSONL records) make the path from **question → entities → per-store results → answer** explainable and reproducible for reviewers and auditors.
+Transparency is built in. Answers are grounded in retrievable documents with **explicit evidence blocks** and auditable query branches. The orchestrator's observability controls (per-store totals, kept filepaths, and optional compact JSONL records) make the path from **question → entities → per-store results → answer** explainable and reproducible for reviewers and auditors.
 
-Finally, this architecture aligns with enterprise governance. Benchmarks show **latency isn’t the primary reason** to split stores; two OpenSearch instances exist for **governance boundaries, retention variations control, and policy asymmetry**. Using **deterministic analyzers, explicit metadata, and TTL eviction**, the system meets accountability and regulatory needs without slowing delivery. Built on mature, open-source tools (OpenSearch, Flask, Python), it’s practical, scalable, and cost-effective. Hybrid RAG proves powerful AI can be both **capable and accountable**.
+Finally, this architecture aligns with enterprise governance. Benchmarks show **latency isn't the primary reason** to split stores; two OpenSearch instances exist for **governance boundaries, retention variations control, and policy asymmetry**. Using **deterministic analyzers, explicit metadata, and TTL eviction**, the system meets accountability and regulatory needs without slowing delivery. Built on mature, open-source tools (OpenSearch, Flask, Python), it's practical, scalable, and cost-effective. Hybrid RAG proves powerful AI can be both **capable and accountable**.

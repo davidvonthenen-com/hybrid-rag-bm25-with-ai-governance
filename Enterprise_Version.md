@@ -4,11 +4,11 @@ Retrieval-Augmented Generation (RAG) has become a critical pattern for grounding
 
 ![Enterprise Hybrid RAG](./images/enterprise_version.png)
 
-In contrast, this enterprise architecture uses a **Hybrid RAG** design that blends **BM25 lexical search** for deterministic factual grounding with **vector embeddings** for semantic context. It delivers the precision and explainability often attributed to graph-based approaches **without using a graph database**—BM25 replaces graph traversal for grounding, and vectors provide semantic context. By combining explicit term matching with semantic similarity, the system produces retrievals that are observable, reproducible, and audit-ready—without sacrificing the nuance needed for ambiguous or paraphrased queries.
+In contrast, this enterprise architecture uses a **Hybrid RAG** design that blends **BM25 lexical search** for deterministic factual grounding with **vector embeddings** for semantic context. It delivers the precision and explainability often attributed to graph-based approaches **without using a graph database**. BM25 replaces graph traversal for grounding, and vectors provide semantic context. By combining explicit term matching with semantic similarity, the system produces retrievals that are observable, reproducible, and audit-ready without sacrificing the nuance needed for ambiguous or paraphrased queries.
 
 ## Key Benefits of Hybrid RAG (Using BM25 + Vector)
 
-* **Transparency and Explainability**: BM25 matches are traceable through explicit queries, field names, and highlights—no hidden embedding-only ranking.
+* **Transparency and Explainability**: BM25 matches are traceable through explicit queries, field names, and highlights... no hidden embedding-only ranking.
 * **Semantic Coverage without Drift**: Vector context augments lexical grounding, expanding coverage while keeping factual anchors intact.
 * **Determinism and Auditability**: Deterministic analyzers and explicit keyword fields ensure reproducible relevance decisions in the lexical layer.
 * **Governance and Compliance**: Observable retrieval paths and stable provenance metadata simplify regulatory adherence and policy enforcement.
@@ -31,7 +31,7 @@ Deploying Hybrid RAG in the enterprise yields clear strategic advantages:
 * **Improved compliance and risk control** thanks to explainable retrieval logic and complete data lineage, backed by immutable **Snapshot** technology.
 * **Scalability and resilience** via leveraging enterprise storage practices and predictable retrieval behavior.
 
-By grounding AI systems in observable document retrieval and supplementing results with semantic context, enterprises can increase trustworthiness, compliance, and operational clarity—while meeting real-world performance requirements without relying on black-box ranking alone.
+By grounding AI systems in observable document retrieval and supplementing results with semantic context, enterprises can increase trustworthiness, compliance, and operational clarity while meeting real-world performance requirements without relying on black-box ranking alone.
 
 This guide provides an enterprise-oriented reference for implementing Hybrid RAG architectures, enabling organizations to build faster, clearer, and fully governable AI solutions.
 
@@ -59,20 +59,11 @@ Long-term memory is the system's **source of truth**. Anything that lands here m
 
 The ingestion process ensures idempotency at the document level via a stable identifier derived from the source path or URI. In enterprise settings, you can add a **batch ID** around each run to trace or roll back entire ingests.
 
-## Operational Knobs You Control
-
-| Variable | Typical Value | Why You Might Change It |
-| --- | --- | --- |
-| `DATA_DIR` | `bbc` | Point to NFS, S3-mount, or SharePoint sync. |
-| `INDEX_NAME` | `bbc` | Route to a different long-term index/alias. |
-| `DEFAULT_URL` | `http://127.0.0.1:8000/ner` | Direct to your NER service or a domain-tuned model. |
-| `OPENSEARCH_PORT` | `9201` | Match your long-term node or cluster ingress. |
-
 ### Implementation Considerations
 
 * **Fast Migration with XCP:** If your source data lives in legacy HDFS or disparate NFS silos, use **NetApp XCP** to consolidate it into the RAG ingest path. XCP offers high-throughput copy and verification, ensuring that the "Source of Truth" in your RAG matches the source systems bit-for-bit.
 * The reference pipeline **calls an external NER service** and performs **NER-only enrichment** during ingest. If you need fail-soft behavior, capture NER errors and store empty term lists without halting the run.
-* **Safe Schema Upgrades with FlexClone:** When you need to update analyzers or test a new embedding model, do not reindex production blindly. Use **NetApp FlexClone** to create an instant, writable copy of your Long-Term index volume. Run your tests against the clone—it consumes no extra space until you write changes, and it keeps production 100% isolated.
+* **Safe Schema Upgrades with FlexClone:** When you need to update analyzers or test a new embedding model, do not reindex production blindly. Use **NetApp FlexClone** to create an instant, writable copy of your Long-Term index volume. Run your tests against the clone. It consumes no extra space until you write changes, and it keeps production 100% isolated.
 * Provenance metadata is explicit and minimal: `filepath`/`URI`, `ingested_at_ms`, and `doc_version`. Track NER and embedding model versions at the service level for audit and reproducibility.
 * **HOT → LT promotion policy:** the only time data moves from HOT back into LT is when there's (1) enough positive reinforcement to warrant promotion **or** (2) a trusted human-in-the-loop has verified the data.
 
@@ -84,7 +75,7 @@ With clean, well-labeled documents in long-term memory, every downstream RAG que
 
 # 4. Promotion of Long-Term Memory into **HOT (unstable)**
 
-> **Goal:** Maintain a governed, low-retention variations working set near the application while preserving provenance and compliance. This tiering exists primarily for **governance, isolation, and policy asymmetry**—not because query latency on LT is inherently slow.
+> **Goal:** Maintain a governed, low-retention variations working set near the application while preserving provenance and compliance. This tiering exists primarily for **governance, isolation, and policy asymmetry** not because query latency on LT is inherently slow.
 
 ## Why Promote?
 
@@ -104,7 +95,7 @@ With clean, well-labeled documents in long-term memory, every downstream RAG que
 
 ## Promotion Flow (Enterprise)
 
-1. **User-specific context is selected out-of-band** — from uploads, per-user ingest, or operator input using the external NER service.
+1. **User-specific context is selected out-of-band** from uploads, per-user ingest, or operator input using the external NER service.
 2. **Promotion filter** targets normalized terms and optional time windows on `ingested_at_ms` when pulling shared docs into a user scope.
 3. **HOT ingest or reindex workflow** pulls matching docs and stamps `hot_promoted_at` for lifecycle control.
 4. **Serving**: the application **queries LT and HOT in parallel** and merges **BM25 grounding + vector context** before presenting context to the LLM.
@@ -142,8 +133,8 @@ Your choice of backing store governs speed and operational flexibility:
 **Why FlexCache Helps Enterprises**
 
 * **Elastic capacity** beyond physical RAM without pipeline redesigns.
-* **Portability** — cache volumes can follow pods across nodes/AZs, keeping the HOT tier close to the inference GPUs.
-* **Governance** — SnapMirror and thin provisioning aid audit and cost control.
+* **Portability** cache volumes can follow pods across nodes/AZs.
+* **Governance** SnapMirror and thin provisioning aid audit and cost control.
 
 In short: **filtered reindex + TTL eviction** gives speed-through-isolation and determinism today; adding **CCR + ISM + FlexCache** layers in **resilience and governance** when scale and ops require it.
 
@@ -153,9 +144,9 @@ For a reference, please check out the following: [enterprise_version/README.md](
 
 # 5. Conclusion
 
-Hybrid RAG turns retrieval-augmented generation from a black-box trick into a transparent, governed architecture. By grounding retrieval in explicit BM25 matching and enriching responses with vector similarity—and materializing the **working set** into **HOT (unstable)** when appropriate—you get answers that are:
+Hybrid RAG turns retrieval-augmented generation from a black-box trick into a transparent, governed architecture. By grounding retrieval in explicit BM25 matching and enriching responses with vector similarity (materializing the **working set** into **HOT (unstable)** when appropriate) you get answers that are:
 
-* **Governed performance.** Parallel queries to LT and HOT keep UX consistent; tiers exist primarily for governance, isolation, and policy asymmetry—any speedup is a secondary effect of locality and reduced churn.
+* **Governed performance.** Parallel queries to LT and HOT keep UX consistent; tiers exist primarily for governance, isolation, and policy asymmetry. Any speedup is a secondary effect of locality and reduced churn.
 * **Clearer.** Every match is traceable through explicit fields and analyzer settings in the lexical layer, with semantic context treated as augmentative rather than authoritative.
 * **Safer.** Deterministic grounding reduces hallucinations while vector context improves recall for paraphrases and long-tail phrasing.
 * **Compliant.** Built-in provenance metadata (`filepath`/`URI`, `ingested_at_ms`, `doc_version`) makes regulatory alignment and retention policies straightforward.
@@ -167,9 +158,9 @@ The enterprise path centers on **user-specific HOT ingest and on-demand reindexi
 While the logic layer handles RAG, NetApp technologies solidify the physical data layer into an enterprise-grade platform. We avoid generic "tiering" in favor of RAG-specific storage policies:
 
 * **High Availability with Zero RPO**: For the authoritative Long-Term memory, use **NetApp MetroCluster**. This ensures that even if a physical site fails, your RAG Knowledge Base remains online with zero data loss, maintaining business continuity for critical AI agents.
-* **Noisy Neighbor Isolation via QoS**: RAG workloads are bursty—ingest jobs can saturate disk I/O, starving the user-facing HOT tier. Use **NetApp Storage QoS** (Quality of Service) to set a minimum throughput floor for the HOT tier and a ceiling for background ingest tasks, guaranteeing predictable inference latency.
+* **Noisy Neighbor Isolation via QoS**: RAG workloads are bursty. Ingest jobs can saturate disk I/O, starving the user-facing HOT tier. Use **NetApp Storage QoS** (Quality of Service) to set a minimum throughput floor for the HOT tier and a ceiling for background ingest tasks, guaranteeing predictable inference latency.
 * **Instant ML Ops with FlexClone**: Testing new embedding models usually requires copying massive indices. **NetApp FlexClone** allows you to fork your Long-Term index instantly (zero-copy) for A/B testing new vector strategies without impacting production storage or performance.
-* **Compliance Snapshots**: Use **SnapCenter** to take immutable, application-consistent snapshots of your vector indices. This allows you to "time travel" and prove exactly what your AI knew at any specific point in the past—a requirement for regulatory audits.
+* **Compliance Snapshots**: Use **SnapCenter** to take immutable, application-consistent snapshots of your vector indices. This allows you to "time travel" and prove exactly what your AI knew at any specific point in the past, a requirement for regulatory audits.
 * **Accelerated Ingest with XCP**: When populating Long-Term memory from legacy HDFS or vast NFS shares, **NetApp XCP** provides the high-performance data migration required to hydrate your RAG pipeline efficiently.
 
 ## Next Steps
@@ -180,4 +171,4 @@ While the logic layer handles RAG, NetApp technologies solidify the physical dat
 4. **Tune the thresholds.** Adjust `α` (relative scoring cutoff), `TTL_MINUTES` (eviction window), `REINDEX_REQUESTS_PER_SECOND`, and optional `PROMOTE_WINDOW_SECONDS` until behavior matches your domain.
 5. **Share lessons.** File issues, submit pull requests, or post a case study. This guide improves with community input and enterprise feedback.
 
-Hybrid RAG isn't a prototype—it's running code with governance baked in. Bring it into your stack and start building AI you can trust.
+Hybrid RAG isn't a prototype... it's running code with governance baked in. Bring it into your stack and start building AI you can trust.
